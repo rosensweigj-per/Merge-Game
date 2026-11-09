@@ -12,7 +12,7 @@ No build step and no dependencies: open `index.html` in a browser, or serve the 
 
 ## Players
 
-The game opens on **Who's playing?** Each player (preset: *Me* and *Shelly*) has their own save, avatar and colour. The colour tints the whole game, and the player's name shows top-left, so it's always clear whose game is open. Tap the name chip to switch players. Use ✏️ to rename or change the avatar and colour, and **Add player** for more people.
+The game opens on **Who's playing?** Each player (preset: *Me*, *Shelly* and *Livy*) has their own save, avatar and colour. The colour tints the whole game, and the player's name shows top-left, so it's always clear whose game is open. Tap the name chip to switch players. Use ✏️ to rename or change the avatar and colour, and **Add player** for more people.
 
 Saves are stored in the browser, so players who share a device share the list. Different phones keep separate lists.
 

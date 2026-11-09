@@ -117,15 +117,28 @@
   function loadProfiles() {
     try {
       const p = JSON.parse(localStorage.getItem(PROFILES_KEY));
-      if (p && Array.isArray(p.list) && p.list.length) return p;
+      if (p && Array.isArray(p.list) && p.list.length) return addNewDefaults(p);
     } catch (_) { /* ignore */ }
-    const list = DEFAULT_PLAYERS.map((d) => ({ id: newId() + d.name.length, ...d }));
+    const list = DEFAULT_PLAYERS.map((d, i) => ({ id: newId() + i, ...d }));
     // Carry a pre-profiles save over to the first player.
     try {
       const old = localStorage.getItem(LEGACY_SAVE_KEY);
       if (old) { localStorage.setItem(saveKey(list[0].id), old); localStorage.removeItem(LEGACY_SAVE_KEY); }
     } catch (_) { /* ignore */ }
-    return { list, current: list[0].id };
+    return { list, current: list[0].id, seeded: DEFAULT_PLAYERS.map((d) => d.name) };
+  }
+
+  // Default players added in later versions (e.g. Livy) appear for existing installs,
+  // but a default player someone deleted is not brought back.
+  function addNewDefaults(p) {
+    // Installs from before this field existed were seeded with Me + Shelly.
+    if (!p.seeded) p.seeded = ['Me', 'Shelly'];
+    DEFAULT_PLAYERS.forEach((d, i) => {
+      if (p.seeded.includes(d.name)) return;
+      if (!p.list.some((x) => x.name === d.name)) p.list.push({ id: newId() + i, ...d });
+      p.seeded.push(d.name);
+    });
+    return p;
   }
 
   function applyTheme() {
