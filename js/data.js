@@ -5,9 +5,7 @@
 const BOARD_COLS = 7;
 const BOARD_ROWS = 9;
 
-const ENERGY_MAX = 100;
-const ENERGY_REGEN_SEC = 60;          // 1 energy per minute
-const START = { energy: 100, coins: 50, gems: 20, storage: 2 };
+const START = { coins: 50, gems: 20, storage: 2 };
 
 const BUBBLE_CHANCE = 0.08;           // chance a merge also drops a bubble copy
 const BUBBLE_LIFETIME_SEC = 60;

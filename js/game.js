@@ -67,7 +67,6 @@
       v: 1,
       board: Array(CELLS).fill(null),
       storage: [], storageSlots: START.storage, storageBought: 0,
-      energy: START.energy, energyAt: now(),
       coins: START.coins, gems: START.gems, xp: 0, level: 1,
       tools: { hammer: 0, screw: 0, brick: 0 },
       orders: [], town: {}, areasDone: [], retired: [], discovered: {},
@@ -151,8 +150,7 @@
 
   function levelUp() {
     S.gems += 5;
-    S.energy += 20;
-    const notes = ['+5 💎', '+20 ⚡'];
+    const notes = ['+5 💎'];
     for (const [c, ch] of Object.entries(CHAINS)) {
       if (ch.unlock === S.level) {
         const p = Object.keys(PRODUCERS).find((k) => PRODUCERS[k].makes === c);
@@ -178,20 +176,13 @@
     return `${CHAINS[c].name} retired to your collection (+${refund}🪙)`;
   }
 
-  function spendEnergy(n) {
-    if (S.energy >= ENERGY_MAX && S.energy - n < ENERGY_MAX) S.energyAt = now();
-    S.energy -= n;
-  }
-
   // ---------------------------------------------------------------- board actions
   function tapProducer(i) {
     const e = S.board[i];
     const lv = prodLevel(e);
     if (e.ch <= 0) { toast(`${e.p && PRODUCERS[e.p].name} is recharging`); return; }
-    if (S.energy < 1) { offerEnergy(); return; }
     const target = nearestEmpty(i);
     if (target < 0) { toast('Board is full — merge, sell or store items'); return; }
-    spendEnergy(1);
     e.ch--;
     if (e.ch === 0) e.cd = now() + lv.cooldown * 1000;
     const item = newItem(PRODUCERS[e.p].makes, Math.random() < lv.bonus ? 2 : 1);
@@ -296,20 +287,6 @@
     commit();
   }
 
-  function offerEnergy() {
-    showModal('⚡', 'Out of energy', `Energy refills 1 every ${ENERGY_REGEN_SEC}s. Buy 50⚡ for 10💎?`, [
-      { label: 'Buy 50⚡ · 10💎', cls: 'gem', fn: buyEnergy },
-      { label: 'Later', cls: 'ghost' },
-    ]);
-  }
-  function buyEnergy() {
-    if (S.gems < 10) { toast('Not enough gems'); return; }
-    S.gems -= 10;
-    S.energy += 50;
-    toast('+50⚡');
-    commit();
-  }
-
   // ---------------------------------------------------------------- town
   const stageOf = (b) => S.town[b.id] || 0;
   const areaDone = (a) => a.buildings.every((b) => stageOf(b) >= b.stages.length);
@@ -370,14 +347,6 @@
   function tick() {
     const t = now();
     let changed = false;
-    if (S.energy < ENERGY_MAX) {
-      const gained = Math.floor((t - S.energyAt) / (ENERGY_REGEN_SEC * 1000));
-      if (gained > 0) {
-        S.energy = Math.min(ENERGY_MAX, S.energy + gained);
-        S.energyAt = S.energy >= ENERGY_MAX ? t : S.energyAt + gained * ENERGY_REGEN_SEC * 1000;
-        changed = true;
-      }
-    }
     S.board.forEach((e, i) => {
       if (!e) return;
       if (e.k === 'p' && e.ch <= 0 && e.cd && t >= e.cd) { e.ch = prodLevel(e).charges; e.cd = 0; changed = true; }
@@ -410,9 +379,6 @@
   function renderHud() {
     $('level').textContent = S.level;
     $('xpfill').style.width = `${Math.min(100, (S.xp / xpForLevel(S.level)) * 100)}%`;
-    $('energy').textContent = S.energy;
-    $('energyTimer').textContent = S.energy < ENERGY_MAX
-      ? fmtTime(ENERGY_REGEN_SEC - (now() - S.energyAt) / 1000) : '';
     $('coins').textContent = fmt(S.coins);
     $('gems').textContent = fmt(S.gems);
   }
@@ -461,7 +427,7 @@
     const e = S.board[sel];
     const el = $('info');
     if (!e) {
-      el.innerHTML = `<div class="icon">💡</div><div class="txt"><small>Tap a glowing producer to make items (1⚡). Drag two matching items together to merge. Deliver orders to earn coins & tools.</small></div>`;
+      el.innerHTML = `<div class="icon">💡</div><div class="txt"><small>Tap a glowing producer to make items. Drag two matching items together to merge. Deliver orders to earn coins & tools.</small></div>`;
       return;
     }
     let sub = '', acts = '';
@@ -532,9 +498,7 @@
     let html = `<div class="shop"><h3>Daily deal</h3>
       <div class="shop-item"><div class="icon">${dIcon}</div><div class="txt"><b>${dName} · Lv ${d.l}</b><small>One per day</small></div>
         <button class="gem" data-shop="deal" ${S.deal.bought || S.gems < d.cost ? 'disabled' : ''}>${S.deal.bought ? 'Sold out' : d.cost + '💎'}</button></div>
-      <h3>Energy & space</h3>
-      <div class="shop-item"><div class="icon">⚡</div><div class="txt"><b>50 Energy</b><small>Can go above the ${ENERGY_MAX} cap</small></div>
-        <button class="gem" data-shop="energy" ${S.gems < 10 ? 'disabled' : ''}>10💎</button></div>
+      <h3>Space</h3>
       <div class="shop-item"><div class="icon">📦</div><div class="txt"><b>Storage slot</b><small>You have ${S.storageSlots}; price doubles each time</small></div>
         <button class="gem" data-shop="slot" ${S.gems < slotCost() ? 'disabled' : ''}>${slotCost()}💎</button></div>
       <h3>Producers</h3>`;
@@ -659,7 +623,6 @@
     else if (t.dataset.shop) {
       const s = t.dataset.shop;
       if (s === 'deal') buyDeal();
-      else if (s === 'energy') buyEnergy();
       else if (s === 'slot') buySlot();
       else if (s.startsWith('prod:')) buyProducer(s.slice(5));
       else if (s === 'reset') showModal('⚠️', 'Start over?', 'Your town and board will be lost.', [
