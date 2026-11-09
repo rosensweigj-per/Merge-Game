@@ -37,12 +37,12 @@ const PRODUCERS = {
   pot:    { name: 'Flower Pot',    icon: '🪴', makes: 'flower', price: 250 },
   chest:  { name: 'Toy Chest',     icon: '🧸', makes: 'toy',    price: 400 },
 };
-// Index = producer level - 1. Higher levels hold more charges, cool down faster
-// and roll a level-2 item more often.
+// Index = producer level - 1. Producers are unlimited; higher levels roll a
+// level-2 item more often.
 const PRODUCER_LEVELS = [
-  { charges: 8,  cooldown: 90, bonus: 0.10 },
-  { charges: 12, cooldown: 60, bonus: 0.25 },
-  { charges: 16, cooldown: 40, bonus: 0.40 },
+  { bonus: 0.10 },
+  { bonus: 0.25 },
+  { bonus: 0.40 },
 ];
 
 const TOOLS = {

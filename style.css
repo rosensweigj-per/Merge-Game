@@ -116,9 +116,6 @@ button.gem { background: var(--gem); color: #fff; }
 }
 .ent .lv { position: absolute; right: 3px; bottom: 1px; font-size: .55rem; font-weight: 800; color: var(--muted); }
 .ent.producer { background: radial-gradient(circle, rgba(255, 215, 90, .45), transparent 70%); }
-.ent.producer .ch { position: absolute; left: 2px; top: 1px; font-size: .55rem; font-weight: 800; color: var(--accent); }
-.ent.cooling { filter: grayscale(.8); }
-.ent.cooling .cd { position: absolute; inset: auto 0 2px; text-align: center; font-size: .55rem; font-weight: 800; color: var(--danger); filter: none; }
 .ent.bubble { border-radius: 50%; background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, .9), rgba(140, 200, 255, .45) 45%, rgba(80, 150, 230, .25)); }
 .ent.bubble .bt { position: absolute; inset: auto 0 1px; text-align: center; font-size: .5rem; font-weight: 800; color: var(--gem); }
 .ent.dragging { opacity: .2; }

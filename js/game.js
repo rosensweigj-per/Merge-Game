@@ -29,7 +29,7 @@
   const activeChains = () => Object.keys(CHAINS).filter((c) => S.level >= CHAINS[c].unlock && !S.retired.includes(c));
 
   const newItem = (c, l) => ({ k: 'i', c, l });
-  const newProducer = (p, l = 1) => ({ k: 'p', p, l, ch: PRODUCER_LEVELS[l - 1].charges, cd: 0 });
+  const newProducer = (p, l = 1) => ({ k: 'p', p, l });
 
   function nearestEmpty(origin) {
     const oc = origin % BOARD_COLS, or = Math.floor(origin / BOARD_COLS);
@@ -180,11 +180,8 @@
   function tapProducer(i) {
     const e = S.board[i];
     const lv = prodLevel(e);
-    if (e.ch <= 0) { toast(`${e.p && PRODUCERS[e.p].name} is recharging`); return; }
     const target = nearestEmpty(i);
     if (target < 0) { toast('Board is full — merge, sell or store items'); return; }
-    e.ch--;
-    if (e.ch === 0) e.cd = now() + lv.cooldown * 1000;
     const item = newItem(PRODUCERS[e.p].makes, Math.random() < lv.bonus ? 2 : 1);
     S.board[target] = item;
     discover(item);
@@ -265,18 +262,6 @@
     commit();
   }
 
-  const skipCost = (e) => Math.max(1, Math.ceil((e.cd - now()) / 30000));
-  function skipCooldown(i) {
-    const e = S.board[i];
-    if (!e || e.k !== 'p' || e.ch > 0) return;
-    const cost = skipCost(e);
-    if (S.gems < cost) { toast(`Need ${cost}💎`); return; }
-    S.gems -= cost;
-    e.ch = prodLevel(e).charges;
-    e.cd = 0;
-    commit();
-  }
-
   function popBubble(i) {
     const e = S.board[i];
     if (!e || !e.b) return;
@@ -349,14 +334,13 @@
     let changed = false;
     S.board.forEach((e, i) => {
       if (!e) return;
-      if (e.k === 'p' && e.ch <= 0 && e.cd && t >= e.cd) { e.ch = prodLevel(e).charges; e.cd = 0; changed = true; }
       if (e.b && t >= e.b) { S.board[i] = null; if (sel === i) sel = -1; changed = true; }
     });
     if (drag && drag.started) return;
     if (changed) { save(); render(); return; }
     // Light refresh: only timers. Avoids rebuilding buttons under the player's finger.
     renderHud();
-    const timers = S.board.some((e) => e && (e.b || (e.k === 'p' && e.ch <= 0)));
+    const timers = S.board.some((e) => e && e.b);
     if (timers && document.querySelector('.view.active').id === 'view-board') { renderBoard(); renderInfo(); }
   }
 
@@ -405,8 +389,6 @@
     let cls = 'ent', extra = '';
     if (e.k === 'p') {
       cls += ' producer';
-      if (e.ch <= 0) { cls += ' cooling'; extra = `<span class="cd">${fmtTime((e.cd - now()) / 1000)}</span>`; }
-      else extra = `<span class="ch">${e.ch}</span>`;
     }
     if (e.b) { cls += ' bubble'; extra = `<span class="bt">${Math.ceil((e.b - now()) / 1000)}s</span>`; }
     if (i === popAt) cls += ' pop';
@@ -432,12 +414,7 @@
     }
     let sub = '', acts = '';
     if (e.k === 'p') {
-      const lv = prodLevel(e);
-      sub = `Makes ${CHAINS[PRODUCERS[e.p].makes].name} · ${e.ch}/${lv.charges} charges`;
-      if (e.ch <= 0) {
-        sub = `Recharging · ${fmtTime((e.cd - now()) / 1000)}`;
-        acts += `<button class="gem" data-act="skip">Skip · ${skipCost(e)}💎</button>`;
-      }
+      sub = `Makes ${CHAINS[PRODUCERS[e.p].makes].name} · ${Math.round(prodLevel(e).bonus * 100)}% chance of Lv 2`;
       if (e.l < PRODUCER_LEVELS.length) sub += ' · merge two to upgrade';
       acts += `<button class="ghost" data-act="store">📦</button>`;
     } else if (e.b) {
@@ -616,7 +593,7 @@
     if (!t) return;
     if (t.dataset.deliver !== undefined) deliver(+t.dataset.deliver);
     else if (t.dataset.act) {
-      ({ sell, store, skip: skipCooldown, pop: popBubble })[t.dataset.act](sel);
+      ({ sell, store, pop: popBubble })[t.dataset.act](sel);
     } else if (t.dataset.slot !== undefined) { if (S.storage[+t.dataset.slot]) unstore(+t.dataset.slot); }
     else if (t.dataset.buyslot !== undefined) buySlot();
     else if (t.dataset.up) { const [a, b] = t.dataset.up.split(':').map(Number); upgrade(a, b); }

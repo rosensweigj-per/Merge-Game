@@ -16,13 +16,13 @@ No build step and no dependencies: open `index.html` in a browser, or serve the 
 | --- | --- |
 | Board | 7 × 9 grid. Drag to move/swap/merge; tap to inspect, sell, or store. |
 | Item chains | Seashells, Picnic, Garden (level 3), Beach Toys (level 6), 6 levels each. |
-| Producers | Limited charges, then a cooldown. Merge two of the same level to upgrade (more charges, faster cooldown, better rolls). |
-| Energy | None — producing is free and unlimited. Producers are only limited by their charges and cooldown. |
-| Gems 💎 | Skip cooldowns, pop bubbles, buy storage, daily deal. Earned from level-ups and area rewards. |
+| Producers | Unlimited: tap as often as you like. Merge two of the same level to upgrade (higher chance of a level-2 item). |
+| Energy | None: producing is free and unlimited. The only limit is free space on the board. |
+| Gems 💎 | Pop bubbles, buy storage, daily deal. Earned from level-ups and area rewards. |
 | Bubbles | A merge sometimes drops a bubbled copy of the result. Pop it with gems within 60 s or it floats away. |
 | Storage | Off-board slots (drag an item onto storage or use 📦). Extra slots cost gems and double in price each time. |
 | Retiring | At level 8 the Seashell chain retires: its items and producers leave the board for coins and stay in your Collection. |
-| Saving | Progress auto-saves to `localStorage`. Cooldowns keep ticking while the game is closed. |
+| Saving | Progress auto-saves to `localStorage`. Bubbles keep ticking while the game is closed. |
 
 ## Files
 
