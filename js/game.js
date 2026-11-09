@@ -3,12 +3,15 @@
 
 (() => {
   const CELLS = BOARD_COLS * BOARD_ROWS;
-  const SAVE_KEY = 'harbor-merge-v1';
+  const LEGACY_SAVE_KEY = 'harbor-merge-v1';
+  const PROFILES_KEY = 'harbor-merge-profiles';
+  const saveKey = (id) => `harbor-merge-save:${id}`;
   const $ = (id) => document.getElementById(id);
 
   let S;            // persistent game state
   let sel = -1;     // selected board index
   let popAt = -1;   // board index to animate on next render
+  let P;            // player profiles: { list: [{id,name,avatar,color}], current }
 
   // ---------------------------------------------------------------- helpers
   const now = () => Date.now();
@@ -19,6 +22,7 @@
     const m = Math.floor(sec / 60), s = sec % 60;
     return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}:${String(s).padStart(2, '0')}`;
   };
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const fmt = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(n);
   const itemInfo = (c, l) => CHAINS[c].items[l - 1];
   const chainMax = (c) => CHAINS[c].items.length;
@@ -69,9 +73,10 @@
       storage: [], storageSlots: START.storage, storageBought: 0,
       coins: START.coins, gems: START.gems, xp: 0, level: 1,
       tools: { hammer: 0, screw: 0, brick: 0 },
-      orders: [], town: {}, areasDone: [], retired: [], discovered: {},
+      orders: [], town: {}, areasDone: [], retired: [], discovered: { shell: 1, food: 2 },
       deal: { day: '', bought: false },
     };
+    ensureState(S);
     S.board[CENTER - 1] = newProducer('pail');
     S.board[CENTER + 1] = newProducer('basket');
     [['shell', 1], ['shell', 1], ['food', 1], ['food', 2]].forEach(([c, l]) => give(newItem(c, l), CENTER + BOARD_COLS * 2));
@@ -80,15 +85,171 @@
     sel = -1;
   }
 
-  function save() {
-    try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (_) { /* storage unavailable */ }
+  // Fill in fields added after a save was first created.
+  function ensureState(s) {
+    s.stats = Object.assign({ orders: 0, merges: 0, made: 0, coinsEarned: 0, bestProducer: 1, started: now() }, s.stats);
+    s.goalsClaimed = s.goalsClaimed || [];
+    return s;
   }
-  function load() {
+
+  function earn(n) { S.coins += n; S.stats.coinsEarned += n; }
+
+  function save() {
+    if (!P || !S) return;
+    S.stats.lastPlayed = now();
+    try { localStorage.setItem(saveKey(P.current), JSON.stringify(S)); } catch (_) { /* storage unavailable */ }
+  }
+  function loadSave(id) {
     try {
-      const s = JSON.parse(localStorage.getItem(SAVE_KEY));
-      if (s && s.v === 1 && Array.isArray(s.board) && s.board.length === CELLS) return s;
+      const s = JSON.parse(localStorage.getItem(saveKey(id)));
+      if (s && s.v === 1 && Array.isArray(s.board) && s.board.length === CELLS) return ensureState(s);
     } catch (_) { /* ignore corrupt save */ }
     return null;
+  }
+
+  // ---------------------------------------------------------------- players
+  const newId = () => 'p' + now().toString(36) + rand(1000);
+  const currentPlayer = () => P.list.find((p) => p.id === P.current);
+
+  function saveProfiles() {
+    try { localStorage.setItem(PROFILES_KEY, JSON.stringify(P)); } catch (_) { /* storage unavailable */ }
+  }
+  function loadProfiles() {
+    try {
+      const p = JSON.parse(localStorage.getItem(PROFILES_KEY));
+      if (p && Array.isArray(p.list) && p.list.length) return p;
+    } catch (_) { /* ignore */ }
+    const list = DEFAULT_PLAYERS.map((d) => ({ id: newId() + d.name.length, ...d }));
+    // Carry a pre-profiles save over to the first player.
+    try {
+      const old = localStorage.getItem(LEGACY_SAVE_KEY);
+      if (old) { localStorage.setItem(saveKey(list[0].id), old); localStorage.removeItem(LEGACY_SAVE_KEY); }
+    } catch (_) { /* ignore */ }
+    return { list, current: list[0].id };
+  }
+
+  function applyTheme() {
+    const p = currentPlayer();
+    const root = document.documentElement.style;
+    root.setProperty('--accent', p.color);
+    root.setProperty('--accent-ink', '#ffffff');
+    root.setProperty('--player', p.color);
+    $('whoAv').textContent = p.avatar;
+    $('whoName').textContent = p.name;
+    document.title = `Harbor Merge · ${p.name}`;
+  }
+
+  function playAs(id) {
+    if (S) save();
+    P.current = id;
+    saveProfiles();
+    S = loadSave(id);
+    sel = -1;
+    const fresh = !S;
+    if (fresh) { newGame(); save(); }
+    applyTheme();
+    $('who').classList.remove('show');
+    switchView('board');
+    const p = currentPlayer();
+    if (fresh) {
+      showModal(p.avatar, `Welcome, ${esc(p.name)}!`,
+        'Storms wrecked the seaside town. Tap producers to make items, merge them, fill orders and rebuild!',
+        [{ label: "Let's go" }]);
+    } else toast(`Playing as ${p.avatar} ${p.name}`);
+  }
+
+  // Summary of any player's save, for the picker and the comparison table.
+  function summary(id) {
+    const s = id === P.current ? S : loadSave(id);
+    if (!s) return null;
+    return {
+      level: s.level,
+      town: Math.round((sumValues(s.town) / TOTAL_STAGES) * 100),
+      found: sumValues(s.discovered),
+      orders: s.stats.orders,
+      merges: s.stats.merges,
+      goals: s.goalsClaimed.length,
+      lastPlayed: s.stats.lastPlayed,
+    };
+  }
+
+  function showPicker() {
+    if (S) save();
+    $('whoList').innerHTML = P.list.map((p) => {
+      const sm = summary(p.id);
+      const line = sm ? `Lv ${sm.level} · Town ${sm.town}%` : 'New game';
+      return `<div class="who-card${p.id === P.current ? ' last' : ''}" style="--pc:${p.color}" data-play="${p.id}">
+        <div class="av">${p.avatar}</div><b>${esc(p.name)}</b><small>${line}</small>
+        <button class="ghost edit" data-edit="${p.id}" title="Edit player">✏️</button></div>`;
+    }).join('') + `<div class="who-card add" data-addplayer><div class="av">＋</div><b>Add player</b></div>`;
+    $('who').classList.add('show');
+  }
+
+  function editPlayer(id) {
+    const isNew = !id;
+    const p = isNew
+      ? { id: newId(), name: '', avatar: AVATARS[P.list.length % AVATARS.length], color: PLAYER_COLORS[P.list.length % PLAYER_COLORS.length] }
+      : { ...P.list.find((x) => x.id === id) };
+    const draw = () => {
+      $('dialog').innerHTML = `<div class="big edit-av" style="--pc:${p.color}">${p.avatar}</div>
+        <h2>${isNew ? 'New player' : 'Edit player'}</h2>
+        <input id="pname" maxlength="16" placeholder="Name" value="${esc(p.name)}">
+        <div class="choices">${AVATARS.map((a) => `<button class="ghost${a === p.avatar ? ' on' : ''}" data-av="${a}">${a}</button>`).join('')}</div>
+        <div class="choices">${PLAYER_COLORS.map((c) => `<button class="swatch${c === p.color ? ' on' : ''}" style="background:${c}" data-color="${c}" title="${c}"></button>`).join('')}</div>
+        <div class="row">
+          ${!isNew && P.list.length > 1 ? '<button class="ghost danger" data-pact="delete">Delete</button>' : ''}
+          <button class="ghost" data-pact="cancel">Cancel</button>
+          <button data-pact="save">Save</button>
+        </div>`;
+    };
+    draw();
+    $('modal').classList.add('show');
+    $('dialog').onclick = (ev) => {
+      const t = ev.target.closest('button');
+      if (!t) return;
+      p.name = $('pname').value.trim();
+      if (t.dataset.av) { p.avatar = t.dataset.av; draw(); return; }
+      if (t.dataset.color) { p.color = t.dataset.color; draw(); return; }
+      const act = t.dataset.pact;
+      if (act === 'cancel') { $('modal').classList.remove('show'); return; }
+      if (act === 'delete') {
+        showModal('⚠️', `Delete ${esc(p.name)}?`, 'Their whole game will be erased.', [
+          { label: 'Delete', fn: () => {
+            P.list = P.list.filter((x) => x.id !== p.id);
+            try { localStorage.removeItem(saveKey(p.id)); } catch (_) { /* ignore */ }
+            if (P.current === p.id) { P.current = P.list[0].id; S = null; }
+            saveProfiles();
+            showPicker();
+          } },
+          { label: 'Cancel', cls: 'ghost', fn: () => editPlayer(p.id) },
+        ]);
+        return;
+      }
+      if (act === 'save') {
+        if (!p.name) { $('pname').focus(); toast('Enter a name'); return; }
+        if (isNew) P.list.push(p);
+        else Object.assign(P.list.find((x) => x.id === p.id), p);
+        saveProfiles();
+        $('modal').classList.remove('show');
+        if (S && p.id === P.current) applyTheme();
+        showPicker();
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------- goals
+  const goalProgress = (g) => Math.min(g.target, g.get(S));
+  const goalReady = (g) => !S.goalsClaimed.includes(g.id) && g.get(S) >= g.target;
+  const rewardStr = (r) => [r.gems ? `${r.gems}💎` : '', r.tools ? toolStr(r.tools) : ''].filter(Boolean).join(' ');
+
+  function claimGoal(id) {
+    const g = GOALS.find((x) => x.id === id);
+    if (!g || !goalReady(g)) return;
+    S.goalsClaimed.push(id);
+    if (g.reward.gems) S.gems += g.reward.gems;
+    for (const [t, n] of Object.entries(g.reward.tools || {})) S.tools[t] += n;
+    toast(`Goal complete! +${rewardStr(g.reward)}`);
+    commit();
   }
 
   // ---------------------------------------------------------------- orders
@@ -129,7 +290,8 @@
     const cells = matchOrder(o);
     if (cells.some((i) => i < 0)) return;
     cells.forEach((i) => { S.board[i] = null; });
-    S.coins += o.coins;
+    earn(o.coins);
+    S.stats.orders++;
     let msg = `${o.who[0]} ${o.who[1]}: Thanks! +${o.coins}🪙`;
     if (o.tool) { S.tools[o.tool] += o.toolN; msg += ` +${o.toolN}${TOOLS[o.tool].icon}`; }
     S.orders[oi] = makeOrder();
@@ -171,7 +333,7 @@
     S.board = S.board.map((e) => { if (isOfChain(e)) { refund += value(e); return null; } return e; });
     S.storage = S.storage.filter((e) => { if (isOfChain(e)) { refund += value(e); return false; } return true; });
     S.retired.push(c);
-    S.coins += refund;
+    earn(refund);
     if (sel >= 0 && !S.board[sel]) sel = -1;
     return `${CHAINS[c].name} retired to your collection (+${refund}🪙)`;
   }
@@ -184,6 +346,7 @@
     if (target < 0) { toast('Board is full — merge, sell or store items'); return; }
     const item = newItem(PRODUCERS[e.p].makes, Math.random() < lv.bonus ? 2 : 1);
     S.board[target] = item;
+    S.stats.made++;
     discover(item);
     popAt = target;
     commit();
@@ -201,6 +364,7 @@
     if (b && b.b) return;
     if (canMerge(a, b)) {
       S.board[from] = null;
+      S.stats.merges++;
       if (a.k === 'i') {
         const merged = newItem(a.c, a.l + 1);
         S.board[to] = merged;
@@ -211,6 +375,7 @@
         }
       } else {
         S.board[to] = newProducer(a.p, a.l + 1);
+        S.stats.bestProducer = Math.max(S.stats.bestProducer, a.l + 1);
         toast(`${PRODUCERS[a.p].name} upgraded to level ${a.l + 1}!`);
       }
       popAt = to;
@@ -226,7 +391,7 @@
     const e = S.board[i];
     if (!e || e.k !== 'i' || e.b) return;
     S.board[i] = null;
-    S.coins += e.l;
+    earn(e.l);
     sel = -1;
     toast(`Sold ${entName(e)} for ${e.l}🪙`);
     commit();
@@ -356,6 +521,7 @@
     const view = document.querySelector('.view.active').id;
     if (view === 'view-board') { renderOrders(); renderBoard(); renderInfo(); renderStorage(); }
     if (view === 'view-town') renderTown();
+    if (view === 'view-progress') renderProgress();
     if (view === 'view-shop') renderShop();
     popAt = -1;
   }
@@ -365,6 +531,7 @@
     $('xpfill').style.width = `${Math.min(100, (S.xp / xpForLevel(S.level)) * 100)}%`;
     $('coins').textContent = fmt(S.coins);
     $('gems').textContent = fmt(S.gems);
+    $('goalDot').classList.toggle('show', GOALS.some(goalReady));
   }
 
   function renderOrders() {
@@ -487,14 +654,64 @@
         <small>${locked ? `Unlocks at level ${c.unlock}` : `Makes ${c.name} · merge two to upgrade`}</small></div>
         <button data-shop="prod:${p}" ${locked || S.coins < pd.price ? 'disabled' : ''}>${pd.price}🪙</button></div>`;
     }
-    html += `<h3>Collection</h3><div class="shop-item"><div class="txt">`;
+    html += `<p style="text-align:center"><button class="ghost" data-shop="reset">Start ${esc(currentPlayer().name)}'s game over</button></p></div>`;
+    $('shop').innerHTML = html;
+  }
+
+  const bar = (val, max) => `<div class="pbar"><div style="width:${max ? Math.min(100, (val / max) * 100) : 0}%"></div></div>`;
+  const ago = (t) => {
+    if (!t) return '—';
+    const m = Math.floor((now() - t) / 60000);
+    if (m < 1) return 'now';
+    if (m < 60) return `${m}m ago`;
+    if (m < 1440) return `${Math.floor(m / 60)}h ago`;
+    return `${Math.floor(m / 1440)}d ago`;
+  };
+
+  function renderProgress() {
+    const p = currentPlayer();
+    const stages = sumValues(S.town), found = sumValues(S.discovered);
+    let html = `<div class="card me" style="--pc:${p.color}">
+        <div class="av">${p.avatar}</div>
+        <div class="txt"><b>${esc(p.name)}</b><small>Level ${S.level} · ${S.xp}/${xpForLevel(S.level)} XP · playing since ${new Date(S.stats.started).toLocaleDateString()}</small></div>
+        <button class="ghost" data-switch>Switch</button>
+      </div>
+      <div class="card">
+        <div class="meter"><span>🏘️ Town rebuilt</span><b>${stages}/${TOTAL_STAGES}</b></div>${bar(stages, TOTAL_STAGES)}
+        <div class="meter"><span>🔍 Items discovered</span><b>${found}/${TOTAL_ITEMS}</b></div>${bar(found, TOTAL_ITEMS)}
+        <div class="meter"><span>🏅 Goals complete</span><b>${S.goalsClaimed.length}/${GOALS.length}</b></div>${bar(S.goalsClaimed.length, GOALS.length)}
+      </div>
+      <h3>Goals</h3><div class="card">`;
+    html += GOALS.map((g) => {
+      const done = S.goalsClaimed.includes(g.id), ready = goalReady(g), cur = goalProgress(g);
+      const right = done ? '<span class="done-tag">✓</span>'
+        : ready ? `<button data-claim="${g.id}">Claim</button>`
+        : `<small>${cur}/${g.target}</small>`;
+      return `<div class="goal${done ? ' done' : ''}"><div class="icon">${g.icon}</div>
+        <div class="txt"><b>${g.text}</b><small>Reward: ${rewardStr(g.reward)}</small>${done ? '' : bar(cur, g.target)}</div>${right}</div>`;
+    }).join('');
+    html += `</div><h3>Stats</h3><div class="stats-grid">
+        <div class="card"><b>${fmt(S.stats.orders)}</b><small>Orders delivered</small></div>
+        <div class="card"><b>${fmt(S.stats.merges)}</b><small>Merges</small></div>
+        <div class="card"><b>${fmt(S.stats.made)}</b><small>Items made</small></div>
+        <div class="card"><b>${fmt(S.stats.coinsEarned)}</b><small>Coins earned</small></div>
+      </div>
+      <h3>Players</h3><div class="card"><table class="cmp"><thead><tr><th></th><th>Lv</th><th>Town</th><th>Items</th><th>Orders</th><th>Played</th></tr></thead><tbody>`;
+    html += P.list.map((pl) => {
+      const sm = summary(pl.id);
+      return `<tr class="${pl.id === P.current ? 'cur' : ''}" style="--pc:${pl.color}">
+        <td><span class="dotav">${pl.avatar}</span> ${esc(pl.name)}</td>
+        ${sm ? `<td>${sm.level}</td><td>${sm.town}%</td><td>${sm.found}</td><td>${sm.orders}</td><td>${ago(sm.lastPlayed)}</td>`
+             : '<td colspan="5"><small>Not started</small></td>'}</tr>`;
+    }).join('');
+    html += `</tbody></table></div><h3>Collection</h3><div class="card">`;
     html += Object.entries(CHAINS).map(([c, ch]) => {
       const got = S.discovered[c] || 0;
-      const icons = ch.items.map((it, i) => i < got ? it[0] : '❔').join(' ');
-      return `<div><b>${ch.name}</b>${S.retired.includes(c) ? ' <small>(retired)</small>' : ''}<div class="retired">${icons}</div></div>`;
+      const icons = ch.items.map((it, i) => i < got ? `<span title="${it[1]}">${it[0]}</span>` : '<span>❔</span>').join('');
+      return `<div class="chain-row"><b>${ch.name}</b>${S.retired.includes(c) ? ' <small>(retired)</small>' : ''}<div class="retired">${icons}</div></div>`;
     }).join('');
-    html += `</div></div><p style="text-align:center"><button class="ghost" data-shop="reset">Start over</button></p></div>`;
-    $('shop').innerHTML = html;
+    html += `</div>`;
+    $('progress').innerHTML = html;
   }
 
   // ---------------------------------------------------------------- UI chrome
@@ -589,9 +806,14 @@
   window.addEventListener('pointercancel', (ev) => endPointer(ev, true));
 
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button');
+    const t = ev.target.closest('[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
     if (!t) return;
-    if (t.dataset.deliver !== undefined) deliver(+t.dataset.deliver);
+    if (t.dataset.edit) editPlayer(t.dataset.edit);
+    else if (t.dataset.play) playAs(t.dataset.play);
+    else if (t.dataset.addplayer !== undefined) editPlayer(null);
+    else if (t.dataset.switch !== undefined || t.id === 'whoChip') showPicker();
+    else if (t.dataset.claim) claimGoal(t.dataset.claim);
+    else if (t.dataset.deliver !== undefined) deliver(+t.dataset.deliver);
     else if (t.dataset.act) {
       ({ sell, store, pop: popBubble })[t.dataset.act](sel);
     } else if (t.dataset.slot !== undefined) { if (S.storage[+t.dataset.slot]) unstore(+t.dataset.slot); }
@@ -602,7 +824,7 @@
       if (s === 'deal') buyDeal();
       else if (s === 'slot') buySlot();
       else if (s.startsWith('prod:')) buyProducer(s.slice(5));
-      else if (s === 'reset') showModal('⚠️', 'Start over?', 'Your town and board will be lost.', [
+      else if (s === 'reset') showModal('⚠️', 'Start over?', `${esc(currentPlayer().name)}'s town and board will be lost. Other players are not affected.`, [
         { label: 'Reset', cls: '', fn: () => { newGame(); save(); switchView('board'); } },
         { label: 'Cancel', cls: 'ghost' },
       ]);
@@ -616,16 +838,10 @@
   }
 
   // ---------------------------------------------------------------- boot
-  S = load();
-  if (!S) {
-    newGame();
-    save();
-    setTimeout(() => showModal('🏖️', 'Welcome to Harbor Merge!',
-      'Storms wrecked the seaside town. Tap producers to make items, merge them, fill orders and rebuild!',
-      [{ label: "Let's go" }]), 50);
-  }
-  tick();
-  render();
-  setInterval(tick, 1000);
+  // Always start on "Who's playing?" so nobody plays on someone else's save.
+  P = loadProfiles();
+  saveProfiles();
+  showPicker();
+  setInterval(() => { if (S) tick(); }, 1000);
   window.__game = { get state() { return S; } }; // debugging handle
 })();

@@ -10,6 +10,7 @@
 <body>
 <main id="app">
   <header class="hud">
+    <button class="who-chip" id="whoChip" title="Switch player"><span class="av" id="whoAv"></span><span class="nm" id="whoName"></span></button>
     <div class="level" title="Player level">
       <span class="lvl-badge" id="level">1</span>
       <div class="xpbar"><div id="xpfill"></div></div>
@@ -33,6 +34,10 @@
     <div id="town"></div>
   </section>
 
+  <section id="view-progress" class="view">
+    <div id="progress"></div>
+  </section>
+
   <section id="view-shop" class="view">
     <div id="shop"></div>
   </section>
@@ -40,10 +45,16 @@
   <nav class="tabs">
     <button data-view="board" class="active">🧩<span>Board</span></button>
     <button data-view="town">🏘️<span>Town</span></button>
+    <button data-view="progress">📈<span>Progress</span><i class="dot" id="goalDot"></i></button>
     <button data-view="shop">🛍️<span>Shop</span></button>
   </nav>
 </main>
 
+<div class="who" id="who"><div class="who-inner">
+  <h1>🏖️ Harbor Merge</h1>
+  <h2>Who's playing?</h2>
+  <div class="who-list" id="whoList"></div>
+</div></div>
 <div class="toast" id="toast"></div>
 <div class="modal" id="modal"><div class="dialog" id="dialog"></div></div>
 

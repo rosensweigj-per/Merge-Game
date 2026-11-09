@@ -125,3 +125,32 @@ const AREAS = [
     ],
   },
 ];
+
+// ---------------------------------------------------------------- players
+const AVATARS = ['🧑', '👩', '👨', '🧒', '👧', '👦', '🐚', '🐢', '🦭', '🐙', '🌸', '⭐', '🦄', '🐶', '🐱', '🦊'];
+const PLAYER_COLORS = ['#1f8fa6', '#d0568f', '#7a5bd6', '#d9822b', '#3c9a4a', '#c0473a'];
+const DEFAULT_PLAYERS = [
+  { name: 'Me', avatar: '🧑', color: '#1f8fa6' },
+  { name: 'Shelly', avatar: '🐚', color: '#d0568f' },
+];
+
+// ---------------------------------------------------------------- progression goals
+// `get` reads the player's state and returns current progress toward `target`.
+const sumValues = (obj) => Object.values(obj || {}).reduce((a, b) => a + b, 0);
+const TOTAL_ITEMS = Object.values(CHAINS).reduce((a, c) => a + c.items.length, 0);
+const TOTAL_STAGES = AREAS.reduce((a, ar) => a + ar.buildings.reduce((b, bl) => b + bl.stages.length, 0), 0);
+
+const GOALS = [
+  { id: 'orders10',  icon: '📦', text: 'Deliver 10 orders',            target: 10,  get: (s) => s.stats.orders,       reward: { tools: { hammer: 2 } } },
+  { id: 'merge100',  icon: '✨', text: 'Make 100 merges',              target: 100, get: (s) => s.stats.merges,       reward: { tools: { screw: 2 } } },
+  { id: 'level5',    icon: '⭐', text: 'Reach level 5',                target: 5,   get: (s) => s.level,              reward: { tools: { brick: 2 } } },
+  { id: 'dock',      icon: '⚓', text: 'Restore Harbor Dock',          target: 1,   get: (s) => s.areasDone.length,   reward: { gems: 5 } },
+  { id: 'prod3',     icon: '🪣', text: 'Upgrade a producer to Lv 3',   target: 3,   get: (s) => s.stats.bestProducer, reward: { tools: { hammer: 2, screw: 2 } } },
+  { id: 'collect15', icon: '🔍', text: 'Discover 15 items',            target: 15,  get: (s) => sumValues(s.discovered), reward: { tools: { brick: 3 } } },
+  { id: 'orders50',  icon: '📦', text: 'Deliver 50 orders',            target: 50,  get: (s) => s.stats.orders,       reward: { gems: 10 } },
+  { id: 'market',    icon: '☕', text: 'Restore Market Street',        target: 2,   get: (s) => s.areasDone.length,   reward: { gems: 10 } },
+  { id: 'merge500',  icon: '✨', text: 'Make 500 merges',              target: 500, get: (s) => s.stats.merges,       reward: { gems: 15 } },
+  { id: 'level10',   icon: '⭐', text: 'Reach level 10',               target: 10,  get: (s) => s.level,              reward: { gems: 20 } },
+  { id: 'collectAll',icon: '🏆', text: 'Complete the collection',      target: TOTAL_ITEMS, get: (s) => sumValues(s.discovered), reward: { gems: 30 } },
+  { id: 'town',      icon: '🗼', text: 'Rebuild the whole town',       target: TOTAL_STAGES, get: (s) => sumValues(s.town), reward: { gems: 50 } },
+];

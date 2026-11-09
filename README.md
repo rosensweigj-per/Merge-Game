@@ -10,6 +10,20 @@ No build step and no dependencies: open `index.html` in a browser, or serve the 
 2. **Fill orders**: three characters at the top ask for specific items (some want two). Tap **Deliver** when you have them for coins 🪙 and XP ⭐. Gold-outlined *tool orders* also pay out 🔨 🔩 🧱.
 3. **Rebuild the town**: spend coins + tools in the **Town** tab to repair and upgrade buildings. Finishing an area clears the fog over the next one and rewards gems plus a new producer.
 
+## Players
+
+The game opens on **Who's playing?** Each player (preset: *Me* and *Shelly*) has their own save, avatar and colour. The colour tints the whole game, and the player's name shows top-left, so it's always clear whose game is open. Tap the name chip to switch players. Use ✏️ to rename or change the avatar and colour, and **Add player** for more people.
+
+Saves are stored in the browser, so players who share a device share the list. Different phones keep separate lists.
+
+## Progress tab
+
+- Level, XP, and town / collection / goal completion bars
+- **Goals**: milestones (orders, merges, levels, areas, collection) that you claim for tools 🔨🔩🧱 and gems. A red dot on the tab means a goal is ready to claim.
+- Stats: orders delivered, merges, items made, coins earned
+- **Players** table comparing everyone's level, town %, items found, orders and last played
+- Item collection
+
 ## Systems
 
 | System | How it works |

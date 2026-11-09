@@ -74,10 +74,10 @@ button.gem { background: var(--gem); color: #fff; }
 .view.active { display: block; }
 .tabs {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 520px;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   background: var(--panel); box-shadow: 0 -2px 8px rgba(0, 0, 0, .12); z-index: 5;
 }
-.tabs button { background: transparent; color: var(--muted); box-shadow: none; display: flex; flex-direction: column; align-items: center; font-size: 1.2rem; padding: 4px; }
+.tabs button { position: relative; background: transparent; color: var(--muted); box-shadow: none; display: flex; flex-direction: column; align-items: center; font-size: 1.2rem; padding: 4px; }
 .tabs button span { font-size: .7rem; }
 .tabs button.active { color: var(--accent); background: var(--cell); }
 
@@ -186,3 +186,71 @@ button.gem { background: var(--gem); color: #fff; }
 .dialog .big { font-size: 3rem; }
 .dialog h2 { margin: 6px 0; }
 .dialog p { color: var(--muted); }
+
+/* Players */
+.who-chip {
+  display: flex; align-items: center; gap: 5px; padding: 3px 9px 3px 3px; border-radius: 99px;
+  background: var(--panel); color: var(--ink); border: 2px solid var(--player, var(--accent)); flex: none; max-width: 110px;
+}
+.who-chip .av { background: var(--player, var(--accent)); border-radius: 50%; width: 26px; height: 26px; display: grid; place-items: center; font-size: 1rem; }
+.who-chip .nm { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board { outline: 3px solid var(--player, transparent); outline-offset: -1px; }
+.tabs .dot { display: none; position: absolute; top: 4px; right: calc(50% - 18px); width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
+.tabs .dot.show { display: block; }
+
+.who {
+  position: fixed; inset: 0; z-index: 65; display: none; overflow-y: auto;
+  background: linear-gradient(var(--sky), var(--sand)); padding: 24px 16px;
+}
+.who.show { display: block; }
+.who-inner { max-width: 420px; margin: 0 auto; text-align: center; }
+.who h1 { margin: 10px 0 4px; }
+.who h2 { margin: 0 0 18px; color: var(--muted); font-weight: 600; font-size: 1.1rem; }
+.who-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.who-card {
+  position: relative; background: var(--panel); border-radius: 18px; padding: 18px 10px 14px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; border: 3px solid transparent;
+}
+.who-card.last { border-color: var(--pc); }
+.who-card .av { width: 72px; height: 72px; border-radius: 50%; background: var(--pc); display: grid; place-items: center; font-size: 2.4rem; margin-bottom: 4px; }
+.who-card small { color: var(--muted); }
+.who-card .edit { position: absolute; top: 6px; right: 6px; padding: 4px 7px; font-size: .8rem; box-shadow: none; }
+.who-card.add { border: 2px dashed var(--muted); box-shadow: none; background: transparent; }
+.who-card.add .av { background: var(--cell); color: var(--muted); }
+
+.dialog input { font: inherit; width: 100%; padding: 10px; border-radius: 10px; border: 2px solid var(--cell); background: var(--sand); color: var(--ink); margin: 6px 0 10px; }
+.dialog .choices { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-bottom: 10px; }
+.dialog .choices button { font-size: 1.3rem; padding: 4px 6px; box-shadow: none; border: 2px solid transparent; }
+.dialog .choices button.on { border-color: var(--ink); }
+.dialog .choices .swatch { width: 32px; height: 32px; border-radius: 50%; padding: 0; }
+.dialog .row { display: flex; gap: 8px; justify-content: center; }
+.dialog .danger { color: var(--danger); }
+.edit-av { width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; background: var(--pc); display: grid; place-items: center; }
+
+/* Progress */
+#progress h3 { margin: 14px 0 6px; }
+.card { background: var(--panel); border-radius: 12px; padding: 10px; box-shadow: var(--shadow); margin-bottom: 8px; }
+.card.me { display: flex; align-items: center; gap: 10px; border-left: 6px solid var(--pc); }
+.card.me .av { width: 48px; height: 48px; border-radius: 50%; background: var(--pc); display: grid; place-items: center; font-size: 1.6rem; flex: none; }
+.card .txt { flex: 1; min-width: 0; }
+.card .txt small { display: block; color: var(--muted); }
+.meter { display: flex; justify-content: space-between; font-size: .85rem; margin-top: 6px; }
+.pbar { height: 8px; background: var(--cell); border-radius: 99px; overflow: hidden; margin-top: 4px; }
+.pbar div { height: 100%; background: var(--accent); border-radius: 99px; }
+.goal { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--cell); }
+.goal:first-child { border-top: 0; }
+.goal .icon { font-size: 1.5rem; width: 32px; text-align: center; }
+.goal small { color: var(--muted); }
+.goal.done { opacity: .55; }
+.goal button { padding: 6px 12px; font-size: .8rem; }
+.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.stats-grid .card { margin: 0; text-align: center; }
+.stats-grid b { font-size: 1.4rem; display: block; }
+.stats-grid small { color: var(--muted); }
+.cmp { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.cmp th { color: var(--muted); font-weight: 600; text-align: left; padding: 4px; }
+.cmp td { padding: 6px 4px; border-top: 1px solid var(--cell); }
+.cmp tr.cur td { font-weight: 700; }
+.cmp tr td:first-child { border-left: 4px solid var(--pc); white-space: nowrap; }
+.dotav { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--pc); font-size: .8rem; }
+.chain-row { margin-bottom: 6px; }
