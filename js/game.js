@@ -1,0 +1,691 @@
+// Harbor Merge — game logic, rendering and input.
+'use strict';
+
+(() => {
+  const CELLS = BOARD_COLS * BOARD_ROWS;
+  const SAVE_KEY = 'harbor-merge-v1';
+  const $ = (id) => document.getElementById(id);
+
+  let S;            // persistent game state
+  let sel = -1;     // selected board index
+  let popAt = -1;   // board index to animate on next render
+
+  // ---------------------------------------------------------------- helpers
+  const now = () => Date.now();
+  const rand = (n) => Math.floor(Math.random() * n);
+  const pick = (arr) => arr[rand(arr.length)];
+  const fmtTime = (sec) => {
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}:${String(s).padStart(2, '0')}`;
+  };
+  const fmt = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(n);
+  const itemInfo = (c, l) => CHAINS[c].items[l - 1];
+  const chainMax = (c) => CHAINS[c].items.length;
+  const entIcon = (e) => e.k === 'p' ? PRODUCERS[e.p].icon : itemInfo(e.c, e.l)[0];
+  const entName = (e) => e.k === 'p' ? PRODUCERS[e.p].name : itemInfo(e.c, e.l)[1];
+  const prodLevel = (e) => PRODUCER_LEVELS[e.l - 1];
+  const toolStr = (tools) => Object.entries(tools).map(([t, n]) => `${TOOLS[t].icon}${n}`).join(' ');
+  const activeChains = () => Object.keys(CHAINS).filter((c) => S.level >= CHAINS[c].unlock && !S.retired.includes(c));
+
+  const newItem = (c, l) => ({ k: 'i', c, l });
+  const newProducer = (p, l = 1) => ({ k: 'p', p, l, ch: PRODUCER_LEVELS[l - 1].charges, cd: 0 });
+
+  function nearestEmpty(origin) {
+    const oc = origin % BOARD_COLS, or = Math.floor(origin / BOARD_COLS);
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < CELLS; i++) {
+      if (S.board[i]) continue;
+      const d = Math.hypot(i % BOARD_COLS - oc, Math.floor(i / BOARD_COLS) - or) + Math.random() * 0.01;
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+  const CENTER = Math.floor(CELLS / 2);
+
+  // Put an entity on the board near `origin`; overflow goes to storage.
+  function give(ent, origin = CENTER) {
+    const i = nearestEmpty(origin);
+    if (i >= 0) { S.board[i] = ent; popAt = i; discover(ent); return 'board'; }
+    S.storage.push(ent);
+    discover(ent);
+    return 'storage';
+  }
+
+  function discover(ent) {
+    if (ent.k !== 'i') return;
+    if ((S.discovered[ent.c] || 0) < ent.l) {
+      const first = S.discovered[ent.c] !== undefined;
+      S.discovered[ent.c] = ent.l;
+      if (first && ent.l > 1) toast(`New item: ${itemInfo(ent.c, ent.l).join(' ')}!`);
+    }
+  }
+
+  // ---------------------------------------------------------------- state
+  function newGame() {
+    S = {
+      v: 1,
+      board: Array(CELLS).fill(null),
+      storage: [], storageSlots: START.storage, storageBought: 0,
+      energy: START.energy, energyAt: now(),
+      coins: START.coins, gems: START.gems, xp: 0, level: 1,
+      tools: { hammer: 0, screw: 0, brick: 0 },
+      orders: [], town: {}, areasDone: [], retired: [], discovered: {},
+      deal: { day: '', bought: false },
+    };
+    S.board[CENTER - 1] = newProducer('pail');
+    S.board[CENTER + 1] = newProducer('basket');
+    [['shell', 1], ['shell', 1], ['food', 1], ['food', 2]].forEach(([c, l]) => give(newItem(c, l), CENTER + BOARD_COLS * 2));
+    popAt = -1;
+    for (let k = 0; k < 3; k++) S.orders.push(makeOrder());
+    sel = -1;
+  }
+
+  function save() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (_) { /* storage unavailable */ }
+  }
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+      if (s && s.v === 1 && Array.isArray(s.board) && s.board.length === CELLS) return s;
+    } catch (_) { /* ignore corrupt save */ }
+    return null;
+  }
+
+  // ---------------------------------------------------------------- orders
+  function makeOrder() {
+    const chains = activeChains();
+    const maxL = Math.min(6, 3 + Math.floor((S.level - 1) / 2));
+    const minL = Math.max(2, maxL - 2);
+    const count = Math.random() < Math.min(0.5, 0.1 * S.level) ? 2 : 1;
+    const reqs = [];
+    for (let i = 0; i < count; i++) {
+      const c = pick(chains);
+      reqs.push({ c, l: Math.min(chainMax(c), minL + rand(maxL - minL + 1)) });
+    }
+    let coins = reqs.reduce((sum, r) => sum + 4 * 2 ** (r.l - 1), 0);
+    const xp = reqs.reduce((sum, r) => sum + r.l * 2, 0);
+    let tool = null;
+    if (Math.random() < 0.3) {
+      const total = Object.values(TOOLS).reduce((a, t) => a + t.weight, 0);
+      let roll = rand(total);
+      tool = Object.keys(TOOLS).find((t) => (roll -= TOOLS[t].weight) < 0);
+      coins = Math.ceil(coins / 2);
+    }
+    return { who: pick(CHARACTERS), reqs, coins, xp, tool, toolN: tool ? (reqs.some((r) => r.l >= 4) ? 2 : 1) : 0 };
+  }
+
+  // Greedily match each requirement to a distinct board cell. Returns array (index or -1 per req).
+  function matchOrder(order) {
+    const used = new Set();
+    return order.reqs.map((r) => {
+      const i = S.board.findIndex((e, idx) => e && !used.has(idx) && e.k === 'i' && !e.b && e.c === r.c && e.l === r.l);
+      if (i >= 0) used.add(i);
+      return i;
+    });
+  }
+
+  function deliver(oi) {
+    const o = S.orders[oi];
+    const cells = matchOrder(o);
+    if (cells.some((i) => i < 0)) return;
+    cells.forEach((i) => { S.board[i] = null; });
+    S.coins += o.coins;
+    let msg = `${o.who[0]} ${o.who[1]}: Thanks! +${o.coins}🪙`;
+    if (o.tool) { S.tools[o.tool] += o.toolN; msg += ` +${o.toolN}${TOOLS[o.tool].icon}`; }
+    S.orders[oi] = makeOrder();
+    toast(msg);
+    addXp(o.xp);
+    commit();
+  }
+
+  // ---------------------------------------------------------------- progression
+  function addXp(n) {
+    S.xp += n;
+    while (S.xp >= xpForLevel(S.level)) {
+      S.xp -= xpForLevel(S.level);
+      S.level++;
+      levelUp();
+    }
+  }
+
+  function levelUp() {
+    S.gems += 5;
+    S.energy += 20;
+    const notes = ['+5 💎', '+20 ⚡'];
+    for (const [c, ch] of Object.entries(CHAINS)) {
+      if (ch.unlock === S.level) {
+        const p = Object.keys(PRODUCERS).find((k) => PRODUCERS[k].makes === c);
+        give(newProducer(p));
+        notes.push(`New producer: ${PRODUCERS[p].icon} ${PRODUCERS[p].name}`);
+      }
+      if (ch.retireAt === S.level) notes.push(retireChain(c));
+    }
+    S.orders = S.orders.map((o) => o.reqs.every((r) => activeChains().includes(r.c)) ? o : makeOrder());
+    showModal('🎉', `Level ${S.level}!`, notes.join('<br>'));
+  }
+
+  // Older chains are retired off the board into the permanent collection.
+  function retireChain(c) {
+    let refund = 0;
+    const isOfChain = (e) => e && ((e.k === 'i' && e.c === c) || (e.k === 'p' && PRODUCERS[e.p].makes === c));
+    const value = (e) => e.k === 'p' ? 20 * e.l : 2 * e.l;
+    S.board = S.board.map((e) => { if (isOfChain(e)) { refund += value(e); return null; } return e; });
+    S.storage = S.storage.filter((e) => { if (isOfChain(e)) { refund += value(e); return false; } return true; });
+    S.retired.push(c);
+    S.coins += refund;
+    if (sel >= 0 && !S.board[sel]) sel = -1;
+    return `${CHAINS[c].name} retired to your collection (+${refund}🪙)`;
+  }
+
+  function spendEnergy(n) {
+    if (S.energy >= ENERGY_MAX && S.energy - n < ENERGY_MAX) S.energyAt = now();
+    S.energy -= n;
+  }
+
+  // ---------------------------------------------------------------- board actions
+  function tapProducer(i) {
+    const e = S.board[i];
+    const lv = prodLevel(e);
+    if (e.ch <= 0) { toast(`${e.p && PRODUCERS[e.p].name} is recharging`); return; }
+    if (S.energy < 1) { offerEnergy(); return; }
+    const target = nearestEmpty(i);
+    if (target < 0) { toast('Board is full — merge, sell or store items'); return; }
+    spendEnergy(1);
+    e.ch--;
+    if (e.ch === 0) e.cd = now() + lv.cooldown * 1000;
+    const item = newItem(PRODUCERS[e.p].makes, Math.random() < lv.bonus ? 2 : 1);
+    S.board[target] = item;
+    discover(item);
+    popAt = target;
+    commit();
+  }
+
+  function canMerge(a, b) {
+    if (!a || !b || a.b || b.b || a.k !== b.k || a.l !== b.l) return false;
+    if (a.k === 'i') return a.c === b.c && a.l < chainMax(a.c);
+    return a.p === b.p && a.l < PRODUCER_LEVELS.length;
+  }
+
+  function moveOrMerge(from, to) {
+    if (from === to) return;
+    const a = S.board[from], b = S.board[to];
+    if (b && b.b) return;
+    if (canMerge(a, b)) {
+      S.board[from] = null;
+      if (a.k === 'i') {
+        const merged = newItem(a.c, a.l + 1);
+        S.board[to] = merged;
+        discover(merged);
+        if (Math.random() < BUBBLE_CHANCE) {
+          const bi = nearestEmpty(to);
+          if (bi >= 0) S.board[bi] = { ...newItem(a.c, a.l + 1), b: now() + BUBBLE_LIFETIME_SEC * 1000 };
+        }
+      } else {
+        S.board[to] = newProducer(a.p, a.l + 1);
+        toast(`${PRODUCERS[a.p].name} upgraded to level ${a.l + 1}!`);
+      }
+      popAt = to;
+    } else {
+      S.board[from] = b;
+      S.board[to] = a;
+    }
+    sel = to;
+    commit();
+  }
+
+  function sell(i) {
+    const e = S.board[i];
+    if (!e || e.k !== 'i' || e.b) return;
+    S.board[i] = null;
+    S.coins += e.l;
+    sel = -1;
+    toast(`Sold ${entName(e)} for ${e.l}🪙`);
+    commit();
+  }
+
+  function store(i) {
+    const e = S.board[i];
+    if (!e || e.b) return;
+    if (S.storage.length >= S.storageSlots) { toast('Storage is full'); return; }
+    S.storage.push(e);
+    S.board[i] = null;
+    sel = -1;
+    commit();
+  }
+
+  function unstore(si) {
+    const target = nearestEmpty(CENTER);
+    if (target < 0) { toast('Board is full'); return; }
+    S.board[target] = S.storage.splice(si, 1)[0];
+    popAt = target;
+    sel = target;
+    commit();
+  }
+
+  const slotCost = () => 5 * 2 ** S.storageBought;
+  function buySlot() {
+    const cost = slotCost();
+    if (S.gems < cost) { toast(`Need ${cost}💎`); return; }
+    S.gems -= cost;
+    S.storageSlots++;
+    S.storageBought++;
+    toast('Storage slot added');
+    commit();
+  }
+
+  const skipCost = (e) => Math.max(1, Math.ceil((e.cd - now()) / 30000));
+  function skipCooldown(i) {
+    const e = S.board[i];
+    if (!e || e.k !== 'p' || e.ch > 0) return;
+    const cost = skipCost(e);
+    if (S.gems < cost) { toast(`Need ${cost}💎`); return; }
+    S.gems -= cost;
+    e.ch = prodLevel(e).charges;
+    e.cd = 0;
+    commit();
+  }
+
+  function popBubble(i) {
+    const e = S.board[i];
+    if (!e || !e.b) return;
+    if (S.gems < e.l) { toast(`Need ${e.l}💎`); return; }
+    S.gems -= e.l;
+    delete e.b;
+    popAt = i;
+    commit();
+  }
+
+  function offerEnergy() {
+    showModal('⚡', 'Out of energy', `Energy refills 1 every ${ENERGY_REGEN_SEC}s. Buy 50⚡ for 10💎?`, [
+      { label: 'Buy 50⚡ · 10💎', cls: 'gem', fn: buyEnergy },
+      { label: 'Later', cls: 'ghost' },
+    ]);
+  }
+  function buyEnergy() {
+    if (S.gems < 10) { toast('Not enough gems'); return; }
+    S.gems -= 10;
+    S.energy += 50;
+    toast('+50⚡');
+    commit();
+  }
+
+  // ---------------------------------------------------------------- town
+  const stageOf = (b) => S.town[b.id] || 0;
+  const areaDone = (a) => a.buildings.every((b) => stageOf(b) >= b.stages.length);
+  const areaUnlocked = (idx) => idx === 0 || S.areasDone.includes(AREAS[idx - 1].id);
+  const affordable = (cost) => S.coins >= cost.coins && Object.entries(cost.tools).every(([t, n]) => S.tools[t] >= n);
+
+  function upgrade(areaIdx, bIdx) {
+    const area = AREAS[areaIdx], b = area.buildings[bIdx];
+    const cost = b.stages[stageOf(b)];
+    if (!cost || !affordable(cost)) return;
+    S.coins -= cost.coins;
+    for (const [t, n] of Object.entries(cost.tools)) S.tools[t] -= n;
+    S.town[b.id] = stageOf(b) + 1;
+    addXp(5);
+    toast(`${b.icon} ${b.name} upgraded!`);
+    if (areaDone(area) && !S.areasDone.includes(area.id)) {
+      S.areasDone.push(area.id);
+      S.gems += area.reward.gems;
+      const p = area.reward.producer;
+      give(newProducer(p));
+      const next = AREAS[areaIdx + 1];
+      showModal('🏝️', `${area.name} restored!`,
+        `+${area.reward.gems}💎 and a ${PRODUCERS[p].icon} ${PRODUCERS[p].name}.` +
+        (next ? `<br>The fog lifts over <b>${next.name}</b>.` : '<br>You rebuilt the whole town!'));
+    }
+    commit();
+  }
+
+  // ---------------------------------------------------------------- shop
+  function today() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+  function dailyDeal() {
+    const day = today();
+    if (S.deal.day !== day) S.deal = { day, bought: false };
+    let h = 0;
+    for (const ch of day) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const chains = activeChains();
+    return { c: chains[h % chains.length], l: 3 + (h % 2), cost: 3 + (h % 2) * 2 };
+  }
+  function buyDeal() {
+    const d = dailyDeal();
+    if (S.deal.bought || S.gems < d.cost) return;
+    S.gems -= d.cost;
+    S.deal.bought = true;
+    const where = give(newItem(d.c, d.l));
+    toast(`${itemInfo(d.c, d.l)[0]} added to your ${where}`);
+    commit();
+  }
+  function buyProducer(p) {
+    const cost = PRODUCERS[p].price;
+    if (S.coins < cost) return;
+    S.coins -= cost;
+    const where = give(newProducer(p));
+    toast(`${PRODUCERS[p].icon} added to your ${where}`);
+    commit();
+  }
+
+  // ---------------------------------------------------------------- time
+  function tick() {
+    const t = now();
+    let changed = false;
+    if (S.energy < ENERGY_MAX) {
+      const gained = Math.floor((t - S.energyAt) / (ENERGY_REGEN_SEC * 1000));
+      if (gained > 0) {
+        S.energy = Math.min(ENERGY_MAX, S.energy + gained);
+        S.energyAt = S.energy >= ENERGY_MAX ? t : S.energyAt + gained * ENERGY_REGEN_SEC * 1000;
+        changed = true;
+      }
+    }
+    S.board.forEach((e, i) => {
+      if (!e) return;
+      if (e.k === 'p' && e.ch <= 0 && e.cd && t >= e.cd) { e.ch = prodLevel(e).charges; e.cd = 0; changed = true; }
+      if (e.b && t >= e.b) { S.board[i] = null; if (sel === i) sel = -1; changed = true; }
+    });
+    if (drag && drag.started) return;
+    if (changed) { save(); render(); return; }
+    // Light refresh: only timers. Avoids rebuilding buttons under the player's finger.
+    renderHud();
+    const timers = S.board.some((e) => e && (e.b || (e.k === 'p' && e.ch <= 0)));
+    if (timers && document.querySelector('.view.active').id === 'view-board') { renderBoard(); renderInfo(); }
+  }
+
+  // ---------------------------------------------------------------- rendering
+  function commit() {
+    if (sel >= 0 && !S.board[sel]) sel = -1;
+    save();
+    render();
+  }
+
+  function render() {
+    renderHud();
+    const view = document.querySelector('.view.active').id;
+    if (view === 'view-board') { renderOrders(); renderBoard(); renderInfo(); renderStorage(); }
+    if (view === 'view-town') renderTown();
+    if (view === 'view-shop') renderShop();
+    popAt = -1;
+  }
+
+  function renderHud() {
+    $('level').textContent = S.level;
+    $('xpfill').style.width = `${Math.min(100, (S.xp / xpForLevel(S.level)) * 100)}%`;
+    $('energy').textContent = S.energy;
+    $('energyTimer').textContent = S.energy < ENERGY_MAX
+      ? fmtTime(ENERGY_REGEN_SEC - (now() - S.energyAt) / 1000) : '';
+    $('coins').textContent = fmt(S.coins);
+    $('gems').textContent = fmt(S.gems);
+  }
+
+  function renderOrders() {
+    $('orders').innerHTML = S.orders.map((o, oi) => {
+      const m = matchOrder(o);
+      const ready = m.every((i) => i >= 0);
+      const reqs = o.reqs.map((r, ri) => {
+        const [icon, name] = itemInfo(r.c, r.l);
+        return `<span class="req${m[ri] >= 0 ? ' have' : ''}" title="${name} (Lv ${r.l})"><i>${r.l}</i>${icon}</span>`;
+      }).join('');
+      const reward = `🪙${o.coins} ⭐${o.xp}` + (o.tool ? ` ${TOOLS[o.tool].icon}${o.toolN}` : '');
+      return `<div class="order${o.tool ? ' tool' : ''}">
+        <div class="who">${o.who[0]} ${o.who[1]}</div>
+        <div class="reqs">${reqs}</div>
+        <div class="reward">${reward}</div>
+        <button data-deliver="${oi}" ${ready ? '' : 'disabled'}>Deliver</button>
+      </div>`;
+    }).join('');
+  }
+
+  function entHtml(e, i) {
+    let cls = 'ent', extra = '';
+    if (e.k === 'p') {
+      cls += ' producer';
+      if (e.ch <= 0) { cls += ' cooling'; extra = `<span class="cd">${fmtTime((e.cd - now()) / 1000)}</span>`; }
+      else extra = `<span class="ch">${e.ch}</span>`;
+    }
+    if (e.b) { cls += ' bubble'; extra = `<span class="bt">${Math.ceil((e.b - now()) / 1000)}s</span>`; }
+    if (i === popAt) cls += ' pop';
+    return `<div class="${cls}" title="${entName(e)}">${entIcon(e)}<span class="lv">${e.l}</span>${extra}</div>`;
+  }
+
+  function renderBoard() {
+    const selEnt = S.board[sel];
+    $('board').innerHTML = S.board.map((e, i) => {
+      let cls = 'cell';
+      if (i === sel) cls += ' selected';
+      else if (selEnt && canMerge(selEnt, e)) cls += ' match';
+      return `<div class="${cls}" data-cell="${i}">${e ? entHtml(e, i) : ''}</div>`;
+    }).join('');
+  }
+
+  function renderInfo() {
+    const e = S.board[sel];
+    const el = $('info');
+    if (!e) {
+      el.innerHTML = `<div class="icon">💡</div><div class="txt"><small>Tap a glowing producer to make items (1⚡). Drag two matching items together to merge. Deliver orders to earn coins & tools.</small></div>`;
+      return;
+    }
+    let sub = '', acts = '';
+    if (e.k === 'p') {
+      const lv = prodLevel(e);
+      sub = `Makes ${CHAINS[PRODUCERS[e.p].makes].name} · ${e.ch}/${lv.charges} charges`;
+      if (e.ch <= 0) {
+        sub = `Recharging · ${fmtTime((e.cd - now()) / 1000)}`;
+        acts += `<button class="gem" data-act="skip">Skip · ${skipCost(e)}💎</button>`;
+      }
+      if (e.l < PRODUCER_LEVELS.length) sub += ' · merge two to upgrade';
+      acts += `<button class="ghost" data-act="store">📦</button>`;
+    } else if (e.b) {
+      sub = `Bubble · vanishes in ${Math.ceil((e.b - now()) / 1000)}s`;
+      acts = `<button class="gem" data-act="pop">Pop · ${e.l}💎</button>`;
+    } else {
+      sub = e.l < chainMax(e.c) ? `Merge two → ${itemInfo(e.c, e.l + 1).join(' ')}` : 'Max level!';
+      acts = `<button class="ghost" data-act="sell">Sell ${e.l}🪙</button><button class="ghost" data-act="store">📦</button>`;
+    }
+    el.innerHTML = `<div class="icon">${entIcon(e)}</div>
+      <div class="txt"><b>${entName(e)} · Lv ${e.l}</b><small>${sub}</small></div>
+      <div class="acts">${acts}</div>`;
+  }
+
+  function renderStorage() {
+    let html = '';
+    for (let i = 0; i < Math.max(S.storageSlots, S.storage.length); i++) {
+      const e = S.storage[i];
+      html += e
+        ? `<div class="slot" data-slot="${i}" title="${entName(e)}">${entIcon(e)}<span class="lv">${e.l}</span></div>`
+        : `<div class="slot" data-slot="${i}"></div>`;
+    }
+    html += `<div class="slot buy" data-buyslot title="Buy a storage slot">+${slotCost()}💎</div>`;
+    $('storage').innerHTML = html;
+  }
+
+  function renderTown() {
+    $('tools').innerHTML = Object.entries(TOOLS)
+      .map(([t, d]) => `<div class="pill" title="${d.name}"><span>${d.icon}</span><b>${S.tools[t]}</b></div>`).join('');
+    $('town').innerHTML = AREAS.map((a, ai) => {
+      if (!areaUnlocked(ai)) {
+        return `<div class="area fog"><div class="big">🌫️</div><b>${a.name}</b><br><small>Restore ${AREAS[ai - 1].name} to clear the fog</small></div>`;
+      }
+      const blds = a.buildings.map((b, bi) => {
+        const st = stageOf(b), max = b.stages.length;
+        const stars = '★'.repeat(st) + '☆'.repeat(max - st);
+        let right = '<span class="done-tag">Complete</span>', cost = '';
+        if (st < max) {
+          const c = b.stages[st];
+          const coinCls = S.coins >= c.coins ? '' : 'short';
+          const tools = Object.entries(c.tools)
+            .map(([t, n]) => `<span class="${S.tools[t] >= n ? '' : 'short'}">${TOOLS[t].icon}${n}</span>`).join(' ');
+          cost = `<div class="cost"><span class="${coinCls}">🪙${c.coins}</span> ${tools}</div>`;
+          right = `<button data-up="${ai}:${bi}" ${affordable(c) ? '' : 'disabled'}>${st === 0 ? 'Repair' : 'Upgrade'}</button>`;
+        }
+        return `<div class="bld"><div class="icon${st === 0 ? ' ruin' : ''}">${b.icon}</div>
+          <div class="txt"><b>${b.name}</b> <span class="stars">${stars}</span>${cost}</div>${right}</div>`;
+      }).join('');
+      const done = areaDone(a);
+      return `<div class="area"><h3>${a.name}${done ? '<span class="done-tag">✓ Restored</span>' : ''}</h3>
+        <p class="sub">${a.blurb} Reward: ${a.reward.gems}💎 + ${PRODUCERS[a.reward.producer].icon}</p>${blds}</div>`;
+    }).join('');
+  }
+
+  function renderShop() {
+    const d = dailyDeal();
+    const [dIcon, dName] = itemInfo(d.c, d.l);
+    let html = `<div class="shop"><h3>Daily deal</h3>
+      <div class="shop-item"><div class="icon">${dIcon}</div><div class="txt"><b>${dName} · Lv ${d.l}</b><small>One per day</small></div>
+        <button class="gem" data-shop="deal" ${S.deal.bought || S.gems < d.cost ? 'disabled' : ''}>${S.deal.bought ? 'Sold out' : d.cost + '💎'}</button></div>
+      <h3>Energy & space</h3>
+      <div class="shop-item"><div class="icon">⚡</div><div class="txt"><b>50 Energy</b><small>Can go above the ${ENERGY_MAX} cap</small></div>
+        <button class="gem" data-shop="energy" ${S.gems < 10 ? 'disabled' : ''}>10💎</button></div>
+      <div class="shop-item"><div class="icon">📦</div><div class="txt"><b>Storage slot</b><small>You have ${S.storageSlots}; price doubles each time</small></div>
+        <button class="gem" data-shop="slot" ${S.gems < slotCost() ? 'disabled' : ''}>${slotCost()}💎</button></div>
+      <h3>Producers</h3>`;
+    for (const [p, pd] of Object.entries(PRODUCERS)) {
+      const c = CHAINS[pd.makes];
+      if (S.retired.includes(pd.makes)) continue;
+      const locked = S.level < c.unlock;
+      html += `<div class="shop-item"><div class="icon">${pd.icon}</div><div class="txt"><b>${pd.name}</b>
+        <small>${locked ? `Unlocks at level ${c.unlock}` : `Makes ${c.name} · merge two to upgrade`}</small></div>
+        <button data-shop="prod:${p}" ${locked || S.coins < pd.price ? 'disabled' : ''}>${pd.price}🪙</button></div>`;
+    }
+    html += `<h3>Collection</h3><div class="shop-item"><div class="txt">`;
+    html += Object.entries(CHAINS).map(([c, ch]) => {
+      const got = S.discovered[c] || 0;
+      const icons = ch.items.map((it, i) => i < got ? it[0] : '❔').join(' ');
+      return `<div><b>${ch.name}</b>${S.retired.includes(c) ? ' <small>(retired)</small>' : ''}<div class="retired">${icons}</div></div>`;
+    }).join('');
+    html += `</div></div><p style="text-align:center"><button class="ghost" data-shop="reset">Start over</button></p></div>`;
+    $('shop').innerHTML = html;
+  }
+
+  // ---------------------------------------------------------------- UI chrome
+  let toastTimer;
+  function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  function showModal(icon, title, html, buttons = [{ label: 'OK' }]) {
+    $('dialog').innerHTML = `<div class="big">${icon}</div><h2>${title}</h2><p>${html}</p>
+      <div style="display:flex;gap:8px;justify-content:center">${buttons.map((b, i) =>
+        `<button class="${b.cls || ''}" data-modal="${i}">${b.label}</button>`).join('')}</div>`;
+    $('modal').classList.add('show');
+    $('dialog').onclick = (ev) => {
+      const btn = ev.target.closest('[data-modal]');
+      if (!btn) return;
+      $('modal').classList.remove('show');
+      const fn = buttons[+btn.dataset.modal].fn;
+      if (fn) fn();
+    };
+  }
+
+  // ---------------------------------------------------------------- input
+  let drag = null;
+
+  function dropTarget(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    const cell = el.closest('[data-cell]');
+    if (cell) return { type: 'cell', i: +cell.dataset.cell, el: cell };
+    const slot = el.closest('.storage, [data-slot]');
+    if (slot) return { type: 'storage', el: slot.closest('[data-slot]') || slot };
+    return null;
+  }
+  const clearHover = () => document.querySelectorAll('.hover').forEach((e) => e.classList.remove('hover'));
+
+  function tapCell(i) {
+    const e = S.board[i];
+    if (!e) { sel = -1; render(); return; }
+    sel = i;
+    if (e.k === 'p' && !e.b) tapProducer(i);
+    else render();
+  }
+
+  $('board').addEventListener('pointerdown', (ev) => {
+    const cell = ev.target.closest('[data-cell]');
+    if (!cell) return;
+    ev.preventDefault();
+    drag = { from: +cell.dataset.cell, x: ev.clientX, y: ev.clientY, id: ev.pointerId, started: false };
+  });
+
+  window.addEventListener('pointermove', (ev) => {
+    if (!drag || ev.pointerId !== drag.id) return;
+    if (!drag.started) {
+      const e = S.board[drag.from];
+      if (!e || e.b || Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 8) return;
+      drag.started = true;
+      sel = drag.from;
+      renderBoard();
+      renderInfo();
+      drag.ghost = document.createElement('div');
+      drag.ghost.className = 'drag-ghost';
+      drag.ghost.textContent = entIcon(e);
+      document.body.appendChild(drag.ghost);
+      const src = $('board').children[drag.from].firstElementChild;
+      if (src) src.classList.add('dragging');
+    }
+    drag.ghost.style.left = ev.clientX + 'px';
+    drag.ghost.style.top = ev.clientY + 'px';
+    clearHover();
+    const t = dropTarget(ev.clientX, ev.clientY);
+    if (t) t.el.classList.add('hover');
+  });
+
+  function endPointer(ev, cancelled) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    if (!d.started) { if (!cancelled) tapCell(d.from); return; }
+    d.ghost.remove();
+    clearHover();
+    const t = cancelled ? null : dropTarget(ev.clientX, ev.clientY);
+    if (t && t.type === 'cell') moveOrMerge(d.from, t.i);
+    else if (t && t.type === 'storage') store(d.from);
+    else render();
+  }
+  window.addEventListener('pointerup', (ev) => endPointer(ev, false));
+  window.addEventListener('pointercancel', (ev) => endPointer(ev, true));
+
+  document.addEventListener('click', (ev) => {
+    const t = ev.target.closest('[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button');
+    if (!t) return;
+    if (t.dataset.deliver !== undefined) deliver(+t.dataset.deliver);
+    else if (t.dataset.act) {
+      ({ sell, store, skip: skipCooldown, pop: popBubble })[t.dataset.act](sel);
+    } else if (t.dataset.slot !== undefined) { if (S.storage[+t.dataset.slot]) unstore(+t.dataset.slot); }
+    else if (t.dataset.buyslot !== undefined) buySlot();
+    else if (t.dataset.up) { const [a, b] = t.dataset.up.split(':').map(Number); upgrade(a, b); }
+    else if (t.dataset.shop) {
+      const s = t.dataset.shop;
+      if (s === 'deal') buyDeal();
+      else if (s === 'energy') buyEnergy();
+      else if (s === 'slot') buySlot();
+      else if (s.startsWith('prod:')) buyProducer(s.slice(5));
+      else if (s === 'reset') showModal('⚠️', 'Start over?', 'Your town and board will be lost.', [
+        { label: 'Reset', cls: '', fn: () => { newGame(); save(); switchView('board'); } },
+        { label: 'Cancel', cls: 'ghost' },
+      ]);
+    } else if (t.dataset.view) switchView(t.dataset.view);
+  });
+
+  function switchView(name) {
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
+    render();
+  }
+
+  // ---------------------------------------------------------------- boot
+  S = load();
+  if (!S) {
+    newGame();
+    save();
+    setTimeout(() => showModal('🏖️', 'Welcome to Harbor Merge!',
+      'Storms wrecked the seaside town. Tap producers to make items, merge them, fill orders and rebuild!',
+      [{ label: "Let's go" }]), 50);
+  }
+  tick();
+  render();
+  setInterval(tick, 1000);
+  window.__game = { get state() { return S; } }; // debugging handle
+})();

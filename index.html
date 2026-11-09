@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#7cc6d6">
+<title>Harbor Merge</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <header class="hud">
+    <div class="level" title="Player level">
+      <span class="lvl-badge" id="level">1</span>
+      <div class="xpbar"><div id="xpfill"></div></div>
+    </div>
+    <div class="pill" title="Energy"><span>⚡</span><b id="energy">100</b><small id="energyTimer"></small></div>
+    <div class="pill" title="Coins"><span>🪙</span><b id="coins">0</b></div>
+    <div class="pill" title="Gems"><span>💎</span><b id="gems">0</b></div>
+  </header>
+
+  <section id="view-board" class="view active">
+    <div class="orders" id="orders" aria-label="Orders"></div>
+    <div class="board" id="board" aria-label="Merge board"></div>
+    <div class="infobar" id="info"></div>
+    <div class="storage-wrap">
+      <div class="storage-label">📦 Storage</div>
+      <div class="storage" id="storage"></div>
+    </div>
+  </section>
+
+  <section id="view-town" class="view">
+    <div class="tools" id="tools"></div>
+    <div id="town"></div>
+  </section>
+
+  <section id="view-shop" class="view">
+    <div id="shop"></div>
+  </section>
+
+  <nav class="tabs">
+    <button data-view="board" class="active">🧩<span>Board</span></button>
+    <button data-view="town">🏘️<span>Town</span></button>
+    <button data-view="shop">🛍️<span>Shop</span></button>
+  </nav>
+</main>
+
+<div class="toast" id="toast"></div>
+<div class="modal" id="modal"><div class="dialog" id="dialog"></div></div>
+
+<script src="js/data.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
