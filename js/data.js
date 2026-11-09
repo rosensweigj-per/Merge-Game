@@ -51,10 +51,59 @@ const TOOLS = {
   brick:  { icon: '🧱', name: 'Bricks', weight: 15 },
 };
 
+// The townsfolk who place orders. Each one owns one of the three order slots
+// at the top of the board (slot 0 = Cooper, 1 = Izzy, 2 = Lexi).
+const WHISKERS = (c) => `<path d="M9 40l12 1.5M9 45.5l12-1.5M55 40l-12 1.5M55 45.5l-12-1.5" stroke="${c}" stroke-width="1.2" stroke-linecap="round"/>`;
 const CHARACTERS = [
-  ['🦭', 'Marlo'], ['🐧', 'Pip'], ['🦦', 'Otto'], ['🦩', 'Fern'],
-  ['🐢', 'Tilly'], ['🦜', 'Rio'], ['🐻', 'Bruno'], ['🦔', 'Hazel'],
+  {
+    id: 'cooper', name: 'Cooper', kind: 'Beagle',
+    svg: `<svg viewBox="0 0 64 64" aria-hidden="true">
+      <ellipse cx="13" cy="37" rx="8" ry="15.5" fill="#5a3418" transform="rotate(14 13 37)"/>
+      <ellipse cx="51" cy="37" rx="8" ry="15.5" fill="#5a3418" transform="rotate(-14 51 37)"/>
+      <ellipse cx="32" cy="31" rx="18" ry="18.5" fill="#c98b4a"/>
+      <path d="M29.5 13h5l2.5 20h-10z" fill="#fff"/>
+      <ellipse cx="32" cy="43" rx="11.5" ry="9" fill="#fff"/>
+      <circle cx="24.5" cy="29" r="3.2" fill="#2b1a0e"/><circle cx="39.5" cy="29" r="3.2" fill="#2b1a0e"/>
+      <circle cx="25.6" cy="27.9" r="1.1" fill="#fff"/><circle cx="40.6" cy="27.9" r="1.1" fill="#fff"/>
+      <ellipse cx="32" cy="38.5" rx="4.4" ry="3.1" fill="#1f1f1f"/>
+      <path d="M32 41.6v2.6M27.5 44.5q4.5 3.4 9 0" stroke="#1f1f1f" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+      <path d="M30 46.5q2 6 4 0z" fill="#f07a8a"/>
+    </svg>`,
+  },
+  {
+    id: 'izzy', name: 'Izzy', kind: 'Calico cat',
+    svg: `<svg viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M11 29L14 5l17 13z" fill="#e8892e"/>
+      <path d="M53 29L50 5 33 18z" fill="#2b2b2b"/>
+      <path d="M16 22l1-11 8 7z" fill="#f6b8c0"/><path d="M48 22l-1-11-8 7z" fill="#f6b8c0"/>
+      <ellipse cx="32" cy="35" rx="20.5" ry="18" fill="#fffaf2"/>
+      <path d="M12.5 33Q13 18 30 18q1 10-8 16-6 3-9.5-1z" fill="#e8892e"/>
+      <path d="M37 18q13 0 15 13-8 0-12-6z" fill="#2b2b2b"/>
+      <ellipse cx="24" cy="33" rx="3.4" ry="4.2" fill="#6dbb3c"/><ellipse cx="40" cy="33" rx="3.4" ry="4.2" fill="#6dbb3c"/>
+      <ellipse cx="24" cy="33" rx="1.2" ry="3.4" fill="#1d1d1d"/><ellipse cx="40" cy="33" rx="1.2" ry="3.4" fill="#1d1d1d"/>
+      <path d="M29.6 39.5h4.8L32 42.3z" fill="#f08a9a"/>
+      <path d="M32 42.3q-2 3.2-5 2M32 42.3q2 3.2 5 2" stroke="#6b4a3a" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      ${WHISKERS('#b9a99a')}
+    </svg>`,
+  },
+  {
+    id: 'lexi', name: 'Lexi', kind: 'Grey cat',
+    svg: `<svg viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M11 29L14 5l17 13z" fill="#8a939d"/><path d="M53 29L50 5 33 18z" fill="#8a939d"/>
+      <path d="M16 22l1-11 8 7z" fill="#f2b6c2"/><path d="M48 22l-1-11-8 7z" fill="#f2b6c2"/>
+      <ellipse cx="32" cy="35" rx="20.5" ry="18" fill="#a4adb7"/>
+      <path d="M27 18.5q1.2 5 0 8.5M32 18v9M37 18.5q-1.2 5 0 8.5" stroke="#6c7580" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path d="M12.5 36l6 1M12.5 31l6 2M51.5 36l-6 1M51.5 31l-6 2" stroke="#6c7580" stroke-width="2" stroke-linecap="round"/>
+      <ellipse cx="32" cy="43" rx="9.5" ry="6.5" fill="#dfe4ea"/>
+      <ellipse cx="24" cy="33" rx="3.4" ry="4.2" fill="#f2b233"/><ellipse cx="40" cy="33" rx="3.4" ry="4.2" fill="#f2b233"/>
+      <ellipse cx="24" cy="33" rx="1.2" ry="3.4" fill="#1d1d1d"/><ellipse cx="40" cy="33" rx="1.2" ry="3.4" fill="#1d1d1d"/>
+      <path d="M29.6 39.5h4.8L32 42.3z" fill="#e88a9c"/>
+      <path d="M32 42.3q-2 3.2-5 2M32 42.3q2 3.2 5 2" stroke="#4f5660" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      ${WHISKERS('#f4f6f8')}
+    </svg>`,
+  },
 ];
+const characterFor = (slot) => CHARACTERS[slot % CHARACTERS.length];
 
 const xpForLevel = (lvl) => 20 + lvl * 15;
 

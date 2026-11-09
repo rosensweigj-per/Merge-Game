@@ -7,7 +7,7 @@ No build step and no dependencies: open `index.html` in a browser, or serve the 
 ## Core loop
 
 1. **Produce & merge**: tap a producer (🪣 🧺 🪴 🧸) to spawn a level-1 item (sometimes level 2). Drag two identical items together to make the next level.
-2. **Fill orders**: three characters at the top ask for specific items (some want two). Tap **Deliver** when you have them for coins 🪙 and XP ⭐. Gold-outlined *tool orders* also pay out 🔨 🔩 🧱.
+2. **Fill orders**: Cooper the beagle 🐶, Izzy the calico cat and Lexi the grey cat each hold one order slot at the top. They ask for specific items (some want two). Tap **Deliver** when you have them for coins 🪙 and XP ⭐. Gold-outlined *tool orders* also pay out 🔨 🔩 🧱.
 3. **Rebuild the town**: spend coins + tools in the **Town** tab to repair and upgrade buildings. Finishing an area clears the fog over the next one and rewards gems plus a new producer.
 
 ## Players

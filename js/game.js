@@ -272,7 +272,7 @@
       tool = Object.keys(TOOLS).find((t) => (roll -= TOOLS[t].weight) < 0);
       coins = Math.ceil(coins / 2);
     }
-    return { who: pick(CHARACTERS), reqs, coins, xp, tool, toolN: tool ? (reqs.some((r) => r.l >= 4) ? 2 : 1) : 0 };
+    return { reqs, coins, xp, tool, toolN: tool ? (reqs.some((r) => r.l >= 4) ? 2 : 1) : 0 };
   }
 
   // Greedily match each requirement to a distinct board cell. Returns array (index or -1 per req).
@@ -292,7 +292,7 @@
     cells.forEach((i) => { S.board[i] = null; });
     earn(o.coins);
     S.stats.orders++;
-    let msg = `${o.who[0]} ${o.who[1]}: Thanks! +${o.coins}🪙`;
+    let msg = `${characterFor(oi).name}: Thanks! +${o.coins}🪙`;
     if (o.tool) { S.tools[o.tool] += o.toolN; msg += ` +${o.toolN}${TOOLS[o.tool].icon}`; }
     S.orders[oi] = makeOrder();
     toast(msg);
@@ -543,8 +543,9 @@
         return `<span class="req${m[ri] >= 0 ? ' have' : ''}" title="${name} (Lv ${r.l})"><i>${r.l}</i>${icon}</span>`;
       }).join('');
       const reward = `🪙${o.coins} ⭐${o.xp}` + (o.tool ? ` ${TOOLS[o.tool].icon}${o.toolN}` : '');
+      const ch = characterFor(oi);
       return `<div class="order${o.tool ? ' tool' : ''}">
-        <div class="who"><span class="face">${o.who[0]}</span>${o.who[1]}</div>
+        <div class="who" title="${ch.name} the ${ch.kind}"><span class="face">${ch.svg}</span>${ch.name}</div>
         <div class="reqs">${reqs}</div>
         <div class="reward">${reward}</div>
         <button data-deliver="${oi}" ${ready ? '' : 'disabled'}>Deliver</button>
