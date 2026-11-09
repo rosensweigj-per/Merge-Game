@@ -544,7 +544,7 @@
       }).join('');
       const reward = `🪙${o.coins} ⭐${o.xp}` + (o.tool ? ` ${TOOLS[o.tool].icon}${o.toolN}` : '');
       return `<div class="order${o.tool ? ' tool' : ''}">
-        <div class="who">${o.who[0]} ${o.who[1]}</div>
+        <div class="who"><span class="face">${o.who[0]}</span>${o.who[1]}</div>
         <div class="reqs">${reqs}</div>
         <div class="reward">${reward}</div>
         <button data-deliver="${oi}" ${ready ? '' : 'disabled'}>Deliver</button>
@@ -576,7 +576,7 @@
     const e = S.board[sel];
     const el = $('info');
     if (!e) {
-      el.innerHTML = `<div class="icon">💡</div><div class="txt"><small>Tap a glowing producer to make items. Drag two matching items together to merge. Deliver orders to earn coins & tools.</small></div>`;
+      el.innerHTML = `<div class="icon info-i">i</div><div class="txt"><small>Tap a glowing producer to make items. Drag two matching items together to merge. Deliver orders to earn coins & tools.</small></div>`;
       return;
     }
     let sub = '', acts = '';
