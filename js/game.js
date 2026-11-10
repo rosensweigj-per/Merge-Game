@@ -89,6 +89,8 @@
   function ensureState(s) {
     s.stats = Object.assign({ orders: 0, merges: 0, made: 0, coinsEarned: 0, bestProducer: 1, started: now() }, s.stats);
     s.goalsClaimed = s.goalsClaimed || [];
+    // Bubbles were removed from the game; clear any left in older saves.
+    s.board = s.board.map((e) => (e && e.b ? null : e));
     return s;
   }
 
@@ -292,7 +294,7 @@
   function matchOrder(order) {
     const used = new Set();
     return order.reqs.map((r) => {
-      const i = S.board.findIndex((e, idx) => e && !used.has(idx) && e.k === 'i' && !e.b && e.c === r.c && e.l === r.l);
+      const i = S.board.findIndex((e, idx) => e && !used.has(idx) && e.k === 'i' && e.c === r.c && e.l === r.l);
       if (i >= 0) used.add(i);
       return i;
     });
@@ -366,7 +368,7 @@
   }
 
   function canMerge(a, b) {
-    if (!a || !b || a.b || b.b || a.k !== b.k || a.l !== b.l) return false;
+    if (!a || !b || a.k !== b.k || a.l !== b.l) return false;
     if (a.k === 'i') return a.c === b.c && a.l < chainMax(a.c);
     return a.p === b.p && a.l < PRODUCER_LEVELS.length;
   }
@@ -374,7 +376,6 @@
   function moveOrMerge(from, to) {
     if (from === to) return;
     const a = S.board[from], b = S.board[to];
-    if (b && b.b) return;
     if (canMerge(a, b)) {
       S.board[from] = null;
       S.stats.merges++;
@@ -382,10 +383,6 @@
         const merged = newItem(a.c, a.l + 1);
         S.board[to] = merged;
         discover(merged);
-        if (Math.random() < BUBBLE_CHANCE) {
-          const bi = nearestEmpty(to);
-          if (bi >= 0) S.board[bi] = { ...newItem(a.c, a.l + 1), b: now() + BUBBLE_LIFETIME_SEC * 1000 };
-        }
       } else {
         S.board[to] = newProducer(a.p, a.l + 1);
         S.stats.bestProducer = Math.max(S.stats.bestProducer, a.l + 1);
@@ -402,7 +399,7 @@
 
   function sell(i) {
     const e = S.board[i];
-    if (!e || e.k !== 'i' || e.b) return;
+    if (!e || e.k !== 'i') return;
     S.board[i] = null;
     earn(e.l);
     sel = -1;
@@ -412,7 +409,7 @@
 
   function store(i) {
     const e = S.board[i];
-    if (!e || e.b) return;
+    if (!e) return;
     if (S.storage.length >= S.storageSlots) { toast('Storage is full'); return; }
     S.storage.push(e);
     S.board[i] = null;
@@ -437,16 +434,6 @@
     S.storageSlots++;
     S.storageBought++;
     toast('Storage slot added');
-    commit();
-  }
-
-  function popBubble(i) {
-    const e = S.board[i];
-    if (!e || !e.b) return;
-    if (S.gems < e.l) { toast(`Need ${e.l}💎`); return; }
-    S.gems -= e.l;
-    delete e.b;
-    popAt = i;
     commit();
   }
 
@@ -508,18 +495,8 @@
 
   // ---------------------------------------------------------------- time
   function tick() {
-    const t = now();
-    let changed = false;
-    S.board.forEach((e, i) => {
-      if (!e) return;
-      if (e.b && t >= e.b) { S.board[i] = null; if (sel === i) sel = -1; changed = true; }
-    });
     if (drag && drag.started) return;
-    if (changed) { save(); render(); return; }
-    // Light refresh: only timers. Avoids rebuilding buttons under the player's finger.
     renderHud();
-    const timers = S.board.some((e) => e && e.b);
-    if (timers && document.querySelector('.view.active').id === 'view-board') { renderBoard(); renderInfo(); }
   }
 
   // ---------------------------------------------------------------- rendering
@@ -571,7 +548,6 @@
     if (e.k === 'p') {
       cls += ' producer';
     }
-    if (e.b) { cls += ' bubble'; extra = `<span class="bt">${Math.ceil((e.b - now()) / 1000)}s</span>`; }
     if (i === popAt) cls += ' pop';
     return `<div class="${cls}" title="${entName(e)}">${entIcon(e)}<span class="lv">${e.l}</span>${extra}</div>`;
   }
@@ -598,9 +574,6 @@
       sub = `Makes ${CHAINS[PRODUCERS[e.p].makes].name} · ${Math.round(prodLevel(e).bonus * 100)}% chance of Lv 2`;
       if (e.l < PRODUCER_LEVELS.length) sub += ' · merge two to upgrade';
       acts += `<button class="ghost" data-act="store">📦</button>`;
-    } else if (e.b) {
-      sub = `Bubble · vanishes in ${Math.ceil((e.b - now()) / 1000)}s`;
-      acts = `<button class="gem" data-act="pop">Pop · ${e.l}💎</button>`;
     } else {
       sub = e.l < chainMax(e.c) ? `Merge two → ${itemInfo(e.c, e.l + 1).join(' ')}` : 'Max level!';
       acts = `<button class="ghost" data-act="sell">Sell ${e.l}🪙</button><button class="ghost" data-act="store">📦</button>`;
@@ -770,7 +743,7 @@
     const e = S.board[i];
     if (!e) { sel = -1; render(); return; }
     sel = i;
-    if (e.k === 'p' && !e.b) tapProducer(i);
+    if (e.k === 'p') tapProducer(i);
     else render();
   }
 
@@ -785,7 +758,7 @@
     if (!drag || ev.pointerId !== drag.id) return;
     if (!drag.started) {
       const e = S.board[drag.from];
-      if (!e || e.b || Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 8) return;
+      if (!e || Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 8) return;
       drag.started = true;
       sel = drag.from;
       renderBoard();
@@ -829,7 +802,7 @@
     else if (t.dataset.claim) claimGoal(t.dataset.claim);
     else if (t.dataset.deliver !== undefined) deliver(+t.dataset.deliver);
     else if (t.dataset.act) {
-      ({ sell, store, pop: popBubble })[t.dataset.act](sel);
+      ({ sell, store })[t.dataset.act](sel);
     } else if (t.dataset.slot !== undefined) { if (S.storage[+t.dataset.slot]) unstore(+t.dataset.slot); }
     else if (t.dataset.buyslot !== undefined) buySlot();
     else if (t.dataset.up) { const [a, b] = t.dataset.up.split(':').map(Number); upgrade(a, b); }

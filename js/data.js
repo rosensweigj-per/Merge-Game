@@ -7,8 +7,6 @@ const BOARD_ROWS = 9;
 
 const START = { coins: 50, gems: 20, storage: 2 };
 
-const BUBBLE_CHANCE = 0.08;           // chance a merge also drops a bubble copy
-const BUBBLE_LIFETIME_SEC = 60;
 
 // Merge chains. Each item level is [emoji, name].
 const CHAINS = {
