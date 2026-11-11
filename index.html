@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=202611100053">
+<link rel="stylesheet" href="style.css?v=202611111831">
 </head>
 <body>
 <main id="app">
@@ -32,6 +32,10 @@
     </div>
   </section>
 
+  <section id="view-fun" class="view">
+    <div id="fun"></div>
+  </section>
+
   <section id="view-town" class="view">
     <div class="tools" id="tools"></div>
     <div id="town"></div>
@@ -47,6 +51,7 @@
 
   <nav class="tabs">
     <button data-view="board" class="active">🧩<span>Board</span></button>
+    <button data-view="fun">🎡<span>Fun</span><i class="dot" id="funDot"></i></button>
     <button data-view="town">🏘️<span>Town</span></button>
     <button data-view="progress">📈<span>Progress</span><i class="dot" id="goalDot"></i></button>
     <button data-view="shop">🛍️<span>Shop</span></button>
@@ -58,10 +63,29 @@
   <h2>Who's playing?</h2>
   <div class="who-list" id="whoList"></div>
 </div></div>
+<div class="fishing" id="fishing">
+  <div class="fish-top">
+    <button class="ghost" data-fish="close">← Back</button>
+    <div class="pill" title="Bait"><span>🪱</span><b id="baitCount">0</b></div>
+  </div>
+  <div class="fish-scene" id="fishScene" data-phase="idle">
+    <div class="sun"></div>
+    <div class="waves"></div>
+    <div class="line"></div>
+    <div class="bobber"></div>
+    <div class="bang">!</div>
+    <div class="catch" id="catch"></div>
+    <div class="pier"></div>
+    <div class="rod">🎣</div>
+  </div>
+  <div class="reel"><div class="zone" id="zone"></div><div class="marker" id="marker"></div></div>
+  <p class="fish-msg" id="fishMsg"></p>
+  <button class="cast" id="castBtn" data-fish="cast">Cast 🎣</button>
+</div>
 <div class="toast" id="toast"></div>
 <div class="modal" id="modal"><div class="dialog" id="dialog"></div></div>
 
-<script src="js/data.js?v=202611100053"></script>
-<script src="js/game.js?v=202611100053"></script>
+<script src="js/data.js?v=202611111831"></script>
+<script src="js/game.js?v=202611111831"></script>
 </body>
 </html>

@@ -16,6 +16,17 @@ The game opens on **Who's playing?** Each player (preset: *Me*, *Shelly* and *Li
 
 Saves are stored in the browser, so players who share a device share the list. Different phones keep separate lists.
 
+## Fun tab 🎡
+
+- **Daily tasks**: three small goals per player each day (merges, orders, orders for a certain pet, fishing...). Each one pays out coins, a tool or gems, and finishing all three opens a bonus gift. New tasks arrive at midnight.
+- **Fishing at the pier**: cast (costs 1 🪱 bait), wait for the bite, then tap fast, then tap again when the marker is in the green zone. Rarer catches (Pufferfish, Sunken Chest, Shark) have shorter bite windows and smaller zones. Bait tops up to 5 every day, can drop from orders, comes with the daily bonus, and is sold in the Shop. Your fish log is shown here.
+- **Family race**: everyone on this device earns ⭐ each week (merge 1, order 10, pet request +10, fish 5, daily task 15). The leader gets a 👑 on the "Who's playing?" screen, and last week's champion is shown.
+- **Team goal**: one shared weekly goal (orders, merges or fish, rotating) that scales with the number of players. When the team reaches it, each player claims 15💎 + 2🧱.
+
+## Pet requests
+
+Now and then Cooper, Izzy or Lexi makes an urgent request (orange card with a ⏰ timer). Fill it within 10 minutes for double coins and XP plus 2💎. Otherwise it disappears and a normal order takes its place.
+
 ## Progress tab
 
 - Level, XP, and town / collection / goal completion bars

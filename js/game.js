@@ -81,7 +81,7 @@
     S.board[CENTER + 1] = newProducer('basket');
     [['shell', 1], ['shell', 1], ['food', 1], ['food', 2]].forEach(([c, l]) => give(newItem(c, l), CENTER + BOARD_COLS * 2));
     popAt = -1;
-    for (let k = 0; k < 3; k++) S.orders.push(makeOrder());
+    for (let k = 0; k < 3; k++) S.orders.push(makeOrder(k, false));
     sel = -1;
   }
 
@@ -91,6 +91,9 @@
     s.goalsClaimed = s.goalsClaimed || [];
     // Bubbles were removed from the game; clear any left in older saves.
     s.board = s.board.map((e) => (e && e.b ? null : e));
+    if (s.bait === undefined) s.bait = BAIT_DAILY;
+    s.fishLog = s.fishLog || {};
+    rollWeek(s);
     return s;
   }
 
@@ -161,7 +164,9 @@
     S = loadSave(id);
     sel = -1;
     const fresh = !S;
-    if (fresh) { newGame(); save(); }
+    if (fresh) newGame();
+    rollDaily();
+    save();
     applyTheme();
     $('who').classList.remove('show');
     switchView('board');
@@ -175,7 +180,7 @@
 
   // Summary of any player's save, for the picker and the comparison table.
   function summary(id) {
-    const s = id === P.current ? S : loadSave(id);
+    const s = saveOf(id);
     if (!s) return null;
     return {
       level: s.level,
@@ -190,11 +195,15 @@
 
   function showPicker() {
     if (S) save();
+    const rows = raceRows();
+    const leader = raceLeader(rows);
     $('whoList').innerHTML = P.list.map((p) => {
       const sm = summary(p.id);
+      const pts = rows.find((r) => r.pl.id === p.id).pts;
       const line = sm ? `Lv ${sm.level} · Town ${sm.town}%` : 'New game';
       return `<div class="who-card${p.id === P.current ? ' last' : ''}" style="--pc:${p.color}" data-play="${p.id}">
-        <div class="av">${p.avatar}</div><b>${esc(p.name)}</b><small>${line}</small>
+        ${p.id === leader ? '<span class="crown" title="Leading this week’s family race">👑</span>' : ''}
+        <div class="av">${p.avatar}</div><b>${esc(p.name)}</b><small>${line}</small>${sm ? `<small class="pts">⭐ ${pts} this week</small>` : ''}
         <button class="ghost edit" data-edit="${p.id}" title="Edit player">✏️</button></div>`;
     }).join('') + `<div class="who-card add" data-addplayer><div class="av">＋</div><b>Add player</b></div>`;
     $('who').classList.add('show');
@@ -255,7 +264,7 @@
   // ---------------------------------------------------------------- goals
   const goalProgress = (g) => Math.min(g.target, g.get(S));
   const goalReady = (g) => !S.goalsClaimed.includes(g.id) && g.get(S) >= g.target;
-  const rewardStr = (r) => [r.gems ? `${r.gems}💎` : '', r.tools ? toolStr(r.tools) : ''].filter(Boolean).join(' ');
+  const rewardStr = (r) => [r.coins ? `${r.coins}🪙` : '', r.gems ? `${r.gems}💎` : '', r.tools ? toolStr(r.tools) : '', r.bait ? `${r.bait}🪱` : ''].filter(Boolean).join(' ');
 
   function claimGoal(id) {
     const g = GOALS.find((x) => x.id === id);
@@ -268,7 +277,7 @@
   }
 
   // ---------------------------------------------------------------- orders
-  function makeOrder() {
+  function makeOrder(slot, allowUrgent = true) {
     const chains = activeChains();
     const maxL = Math.min(6, 3 + Math.floor((S.level - 1) / 2));
     const minL = Math.max(2, maxL - 2);
@@ -287,7 +296,15 @@
       tool = Object.keys(TOOLS).find((t) => (roll -= TOOLS[t].weight) < 0);
       coins = Math.ceil(coins / 2);
     }
-    return { reqs, coins, xp, tool, toolN: tool ? (reqs.some((r) => r.l >= 4) ? 2 : 1) : 0 };
+    const o = { reqs, coins, xp, tool, toolN: tool ? (reqs.some((r) => r.l >= 4) ? 2 : 1) : 0 };
+    // Occasionally a pet makes a timed request worth double, plus gems. Only one at a time.
+    if (allowUrgent && Math.random() < URGENT_CHANCE && !S.orders.some((x, i) => i !== slot && x && x.urgent)) {
+      o.urgent = now() + URGENT_MINUTES * 60000;
+      o.coins *= 2;
+      o.xp *= 2;
+      o.gems = URGENT_GEMS;
+    }
+    return o;
   }
 
   // Greedily match each requirement to a distinct board cell. Returns array (index or -1 per req).
@@ -309,7 +326,11 @@
     S.stats.orders++;
     let msg = `${characterFor(oi).name}: Thanks! +${o.coins}🪙`;
     if (o.tool) { S.tools[o.tool] += o.toolN; msg += ` +${o.toolN}${TOOLS[o.tool].icon}`; }
-    S.orders[oi] = makeOrder();
+    if (o.gems) { S.gems += o.gems; msg += ` +${o.gems}💎`; }
+    if (Math.random() < BAIT_ORDER_CHANCE) { S.bait++; msg += ' +1🪱'; }
+    track('order', { pet: characterFor(oi).id });
+    if (o.urgent) track('urgent');
+    S.orders[oi] = makeOrder(oi);
     toast(msg);
     addXp(o.xp);
     commit();
@@ -336,7 +357,7 @@
       }
       if (ch.retireAt === S.level) notes.push(retireChain(c));
     }
-    S.orders = S.orders.map((o) => o.reqs.every((r) => activeChains().includes(r.c)) ? o : makeOrder());
+    S.orders = S.orders.map((o, i) => o.reqs.every((r) => activeChains().includes(r.c)) ? o : makeOrder(i, false));
     showModal('🎉', `Level ${S.level}!`, notes.join('<br>'));
   }
 
@@ -362,6 +383,7 @@
     const item = newItem(PRODUCERS[e.p].makes, Math.random() < lv.bonus ? 2 : 1);
     S.board[target] = item;
     S.stats.made++;
+    track('make');
     discover(item);
     popAt = target;
     commit();
@@ -379,6 +401,7 @@
     if (canMerge(a, b)) {
       S.board[from] = null;
       S.stats.merges++;
+      track('merge', { chain: a.c });
       if (a.k === 'i') {
         const merged = newItem(a.c, a.l + 1);
         S.board[to] = merged;
@@ -423,6 +446,14 @@
     S.board[target] = S.storage.splice(si, 1)[0];
     popAt = target;
     sel = target;
+    commit();
+  }
+
+  function buyBait() {
+    if (S.gems < BAIT_SHOP.gems) { toast(`Need ${BAIT_SHOP.gems}💎`); return; }
+    S.gems -= BAIT_SHOP.gems;
+    S.bait += BAIT_SHOP.amount;
+    toast(`+${BAIT_SHOP.amount}🪱 bait`);
     commit();
   }
 
@@ -493,10 +524,266 @@
     commit();
   }
 
+  // ---------------------------------------------------------------- days & weeks
+  const dayKey = (d) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+  function mondayOf(d = new Date()) {
+    const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+    return m;
+  }
+  const weekKey = (offset = 0) => { const m = mondayOf(); m.setDate(m.getDate() + offset * 7); return dayKey(m); };
+  const weekIndex = () => Math.floor(Math.round(mondayOf().getTime() / 864e5) / 7);
+  const untilStr = (ms) => {
+    const h = Math.floor(ms / 3.6e6), m = Math.floor((ms % 3.6e6) / 6e4);
+    return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h ${m}m`;
+  };
+  const msToMidnight = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - d; };
+  const msToMonday = () => { const m = mondayOf(); m.setDate(m.getDate() + 7); return m - new Date(); };
+
+  // Start a fresh week of race stats, remembering last week's points.
+  function rollWeek(s) {
+    if (s.week && s.week.key === weekKey()) return;
+    if (s.week) s.lastWeek = { key: s.week.key, points: s.week.points };
+    s.week = { key: weekKey(), points: 0, orders: 0, merges: 0, fish: 0, teamClaimed: false };
+  }
+
+  // A player's save for read-only use (the current player's live state, or a stored save).
+  const saveOf = (id) => (id === P.current && S ? S : loadSave(id));
+
+  // ---------------------------------------------------------------- rewards
+  function grant(r) {
+    if (r.coins) earn(r.coins);
+    if (r.gems) S.gems += r.gems;
+    if (r.bait) S.bait += r.bait;
+    for (const [t, n] of Object.entries(r.tools || {})) S.tools[t] += n;
+  }
+
+  // Record a game event for daily tasks and the weekly race.
+  function track(ev, data = {}) {
+    rollWeek(S);
+    const w = S.week;
+    w.points += RACE_POINTS[ev] || 0;
+    if (ev === 'merge') w.merges++;
+    if (ev === 'order') w.orders++;
+    if (ev === 'fish') w.fish++;
+    for (const t of (S.daily ? S.daily.tasks : [])) {
+      if (t.progress >= t.n) continue;
+      const hit = t.type === ev
+        || (t.type === 'mergeChain' && ev === 'merge' && data.chain === t.chain)
+        || (t.type === 'orderPet' && ev === 'order' && data.pet === t.pet);
+      if (hit && ++t.progress === t.n) setTimeout(() => toast(`✅ Daily task done: ${taskText(t)}`), 1900);
+    }
+  }
+
+  // ---------------------------------------------------------------- daily tasks
+  function rollDaily() {
+    const day = today();
+    if (S.daily && S.daily.day === day) return false;
+    if (S.bait < BAIT_DAILY) S.bait = BAIT_DAILY;
+    const pool = DAILY_TASKS.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+    const toolKeys = Object.keys(TOOLS);
+    const rewards = [{ coins: 30 + 10 * S.level }, { tools: { [pick(toolKeys)]: 1 } }, { gems: 3 }];
+    S.daily = {
+      day, bonusClaimed: false,
+      tasks: pool.map((t, i) => {
+        const task = { type: t.type, n: pick(t.n), progress: 0, claimed: false, reward: rewards[i] };
+        if (t.type === 'mergeChain') task.chain = pick(activeChains());
+        if (t.type === 'orderPet') task.pet = pick(CHARACTERS).id;
+        return task;
+      }),
+    };
+    return true;
+  }
+
+  function taskText(t) {
+    if (t.type === 'merge') return `Make ${t.n} merges`;
+    if (t.type === 'mergeChain') return `Merge ${t.n} ${CHAINS[t.chain].name} items`;
+    if (t.type === 'make') return `Tap producers ${t.n} times`;
+    if (t.type === 'order') return `Deliver ${t.n} orders`;
+    if (t.type === 'orderPet') return `Deliver ${t.n} order${t.n > 1 ? 's' : ''} for ${CHARACTERS.find((c) => c.id === t.pet).name}`;
+    if (t.type === 'fish') return `Catch ${t.n} fish`;
+    return t.type;
+  }
+
+  const dailyReady = (t) => !t.claimed && t.progress >= t.n;
+  const bonusReady = () => S.daily && !S.daily.bonusClaimed && S.daily.tasks.every((t) => t.claimed);
+
+  function claimDaily(i) {
+    const t = S.daily.tasks[i];
+    if (!t || !dailyReady(t)) return;
+    t.claimed = true;
+    grant(t.reward);
+    track('daily');
+    toast(`Daily task complete! +${rewardStr(t.reward)}`);
+    commit();
+  }
+  function claimDailyBonus() {
+    if (!bonusReady()) return;
+    S.daily.bonusClaimed = true;
+    grant(DAILY_BONUS);
+    showModal('🎁', 'All daily tasks done!', `+${rewardStr(DAILY_BONUS)}<br>New tasks arrive tomorrow.`);
+    commit();
+  }
+
+  // ---------------------------------------------------------------- family race & team goal
+  function raceRows() {
+    return P.list.map((pl) => {
+      const s = saveOf(pl.id);
+      return {
+        pl,
+        pts: s ? s.week.points : 0,
+        last: s && s.lastWeek && s.lastWeek.key === weekKey(-1) ? s.lastWeek.points : 0,
+      };
+    }).sort((a, b) => b.pts - a.pts);
+  }
+  // Leader of this week (only when someone has points and nobody is tied for first).
+  function raceLeader(rows = raceRows()) {
+    return rows.length && rows[0].pts > 0 && (rows.length < 2 || rows[0].pts > rows[1].pts) ? rows[0].pl.id : null;
+  }
+  function lastChampion(rows) {
+    const best = rows.reduce((a, r) => (r.last > (a ? a.last : 0) ? r : a), null);
+    return best ? best.pl : null;
+  }
+
+  function teamGoal() {
+    const g = TEAM_GOALS[weekIndex() % TEAM_GOALS.length];
+    const target = g.per * P.list.length;
+    const parts = P.list.map((pl) => { const s = saveOf(pl.id); return { pl, n: s ? s.week[g.stat] : 0 }; });
+    const total = parts.reduce((a, p) => a + p.n, 0);
+    return { g, target, parts, total, done: total >= target };
+  }
+  function claimTeam() {
+    if (S.week.teamClaimed || !teamGoal().done) return;
+    S.week.teamClaimed = true;
+    grant(TEAM_REWARD);
+    showModal('🤝', 'Team goal reached!', `Great teamwork! +${rewardStr(TEAM_REWARD)}`);
+    commit();
+  }
+
+  // ---------------------------------------------------------------- fishing
+  let fishing = null; // { phase, fish, tier, timer, raf, pos, dir, zoneL, last }
+  const fishEl = (id) => $(id);
+
+  function openFishing() {
+    $('fishing').classList.add('show');
+    fishing = { phase: 'idle' };
+    fishShow('idle', BAIT_HINT());
+  }
+  const BAIT_HINT = () => (S.bait > 0 ? 'Tap Cast to throw your line.' : 'Out of bait! Get more from orders, daily tasks or the shop.');
+  function closeFishing() {
+    stopFishTimers();
+    fishing = null;
+    $('fishing').classList.remove('show');
+    render();
+  }
+  function stopFishTimers() {
+    if (!fishing) return;
+    clearTimeout(fishing.timer);
+    cancelAnimationFrame(fishing.raf);
+  }
+  function fishShow(phase, msg) {
+    fishing.phase = phase;
+    $('fishScene').dataset.phase = phase;
+    $('fishMsg').textContent = msg;
+    $('baitCount').textContent = S.bait;
+    $('castBtn').disabled = phase !== 'idle' && phase !== 'result';
+    $('castBtn').textContent = S.bait > 0 ? `Cast 🎣 (1 🪱)` : 'Get bait';
+  }
+  function rollFish() {
+    const total = FISH.reduce((a, f) => a + f.weight, 0);
+    let r = Math.random() * total;
+    return FISH.find((f) => (r -= f.weight) < 0) || FISH[0];
+  }
+  function cast() {
+    if (!fishing || (fishing.phase !== 'idle' && fishing.phase !== 'result')) return;
+    if (S.bait < 1) { closeFishing(); switchView('shop'); toast('Buy bait here 🪱'); return; }
+    S.bait--;
+    save();
+    fishing.fish = rollFish();
+    fishing.tier = FISH_TIERS[fishing.fish.tier];
+    $('catch').textContent = '';
+    fishShow('wait', 'Waiting for a bite… don’t tap yet!');
+    fishing.timer = setTimeout(bite, 1500 + Math.random() * 2800);
+  }
+  function bite() {
+    fishShow('bite', 'A bite! TAP NOW!');
+    if (navigator.vibrate) navigator.vibrate(60);
+    fishing.timer = setTimeout(() => fishMiss('Too slow — it got away.'), fishing.tier.win);
+  }
+  function startReel() {
+    clearTimeout(fishing.timer);
+    const z = fishing.tier.zone;
+    fishing.zoneL = 0.08 + Math.random() * (0.84 - z);
+    fishing.pos = 0;
+    fishing.dir = 1;
+    fishing.last = performance.now();
+    $('zone').style.left = `${fishing.zoneL * 100}%`;
+    $('zone').style.width = `${z * 100}%`;
+    fishShow('reel', 'Reel it in! Tap when the marker is in the green.');
+    const step = (t) => {
+      const dt = (t - fishing.last) / 1000;
+      fishing.last = t;
+      fishing.pos += fishing.dir * fishing.tier.speed * dt;
+      if (fishing.pos >= 1) { fishing.pos = 1; fishing.dir = -1; }
+      if (fishing.pos <= 0) { fishing.pos = 0; fishing.dir = 1; }
+      $('marker').style.left = `${fishing.pos * 100}%`;
+      fishing.raf = requestAnimationFrame(step);
+    };
+    fishing.raf = requestAnimationFrame(step);
+    fishing.timer = setTimeout(() => fishMiss('The line snapped!'), 6000);
+  }
+  function fishTap() {
+    if (!fishing) return;
+    if (fishing.phase === 'wait') { clearTimeout(fishing.timer); fishMiss('Too early! You scared it off.'); }
+    else if (fishing.phase === 'bite') startReel();
+    else if (fishing.phase === 'reel') {
+      stopFishTimers();
+      const inZone = fishing.pos >= fishing.zoneL && fishing.pos <= fishing.zoneL + fishing.tier.zone;
+      if (inZone) fishCaught(); else fishMiss('So close! It wriggled free.');
+    }
+  }
+  function fishMiss(msg) {
+    stopFishTimers();
+    fishShow('result', `${msg} ${S.bait > 0 ? '' : 'Out of bait!'}`);
+  }
+  function fishCaught() {
+    const f = fishing.fish;
+    const reward = { coins: f.coins };
+    if (f.gems) reward.gems = f.gems;
+    if (f.tools) reward.tools = { [pick(Object.keys(TOOLS))]: f.tools };
+    grant(reward);
+    S.fishLog[f.id] = (S.fishLog[f.id] || 0) + 1;
+    track('fish');
+    save();
+    $('catch').innerHTML = `<span class="big">${f.icon}</span><b>${f.name}!</b><small>+${rewardStr(reward)}</small>`;
+    fishShow('result', f.id === 'boot' ? 'Well… it’s a catch!' : 'Nice catch!');
+    if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
+  }
+
+  // ---------------------------------------------------------------- pet requests
+  function expireRequests() {
+    let changed = false;
+    S.orders.forEach((o, i) => {
+      if (o.urgent && now() >= o.urgent) {
+        S.orders[i] = makeOrder(i, false);
+        toast(`${characterFor(i).name}'s request ran out of time`);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   // ---------------------------------------------------------------- time
   function tick() {
+    const changed = rollDaily() | expireRequests();
+    if (changed) save();
     if (drag && drag.started) return;
+    if (changed) { render(); return; }
     renderHud();
+    document.querySelectorAll('[data-urg]').forEach((el) => {
+      const o = S.orders[+el.dataset.urg];
+      if (o && o.urgent) el.textContent = fmtTime((o.urgent - now()) / 1000);
+    });
   }
 
   // ---------------------------------------------------------------- rendering
@@ -511,7 +798,10 @@
     const view = document.querySelector('.view.active').id;
     if (view === 'view-board') { renderOrders(); renderBoard(); renderInfo(); renderStorage(); }
     if (view === 'view-town') renderTown();
+    if (view === 'view-fun') renderFun();
     if (view === 'view-progress') renderProgress();
+    const tg = teamGoal();
+    $('funDot').classList.toggle('show', S.daily.tasks.some(dailyReady) || bonusReady() || (tg.done && !S.week.teamClaimed));
     if (view === 'view-shop') renderShop();
     popAt = -1;
   }
@@ -532,9 +822,10 @@
         const [icon, name] = itemInfo(r.c, r.l);
         return `<span class="req${m[ri] >= 0 ? ' have' : ''}" title="${name} (Lv ${r.l})"><i>${r.l}</i>${icon}</span>`;
       }).join('');
-      const reward = `🪙${o.coins} ⭐${o.xp}` + (o.tool ? ` ${TOOLS[o.tool].icon}${o.toolN}` : '');
+      const reward = `🪙${o.coins} ⭐${o.xp}` + (o.tool ? ` ${TOOLS[o.tool].icon}${o.toolN}` : '') + (o.gems ? ` 💎${o.gems}` : '');
       const ch = characterFor(oi);
-      return `<div class="order${o.tool ? ' tool' : ''}">
+      const urg = o.urgent ? `<div class="urg">⏰ <span data-urg="${oi}">${fmtTime((o.urgent - now()) / 1000)}</span></div>` : '';
+      return `<div class="order${o.tool ? ' tool' : ''}${o.urgent ? ' urgent' : ''}">${urg}
         <div class="who" title="${ch.name} the ${ch.kind}"><span class="face">${ch.svg}</span>${ch.name}</div>
         <div class="reqs">${reqs}</div>
         <div class="reward">${reward}</div>
@@ -629,6 +920,9 @@
     let html = `<div class="shop"><h3>Daily deal</h3>
       <div class="shop-item"><div class="icon">${dIcon}</div><div class="txt"><b>${dName} · Lv ${d.l}</b><small>One per day</small></div>
         <button class="gem" data-shop="deal" ${S.deal.bought || S.gems < d.cost ? 'disabled' : ''}>${S.deal.bought ? 'Sold out' : d.cost + '💎'}</button></div>
+      <h3>Fishing</h3>
+      <div class="shop-item"><div class="icon">🪱</div><div class="txt"><b>${BAIT_SHOP.amount} Bait</b><small>You have ${S.bait}. You also get ${BAIT_DAILY} free each day.</small></div>
+        <button class="gem" data-shop="bait" ${S.gems < BAIT_SHOP.gems ? 'disabled' : ''}>${BAIT_SHOP.gems}💎</button></div>
       <h3>Space</h3>
       <div class="shop-item"><div class="icon">📦</div><div class="txt"><b>Storage slot</b><small>You have ${S.storageSlots}; price doubles each time</small></div>
         <button class="gem" data-shop="slot" ${S.gems < slotCost() ? 'disabled' : ''}>${slotCost()}💎</button></div>
@@ -699,6 +993,52 @@
     }).join('');
     html += `</div>`;
     $('progress').innerHTML = html;
+  }
+
+  function renderFun() {
+    const d = S.daily;
+    let html = `<h3 class="fun-h">📅 Today's tasks <small>new tasks in ${untilStr(msToMidnight())}</small></h3><div class="card">`;
+    html += d.tasks.map((t, i) => {
+      const right = t.claimed ? '<span class="done-tag">✓</span>'
+        : dailyReady(t) ? `<button data-daily="${i}">Claim</button>`
+        : `<small>${t.progress}/${t.n}</small>`;
+      return `<div class="goal${t.claimed ? ' done' : ''}"><div class="icon">${['🌅', '🌤️', '🌙'][i]}</div>
+        <div class="txt"><b>${taskText(t)}</b><small>Reward: ${rewardStr(t.reward)}</small>${t.claimed ? '' : bar(Math.min(t.progress, t.n), t.n)}</div>${right}</div>`;
+    }).join('');
+    html += `<div class="goal bonus${d.bonusClaimed ? ' done' : ''}"><div class="icon">🎁</div>
+      <div class="txt"><b>Finish all three</b><small>Bonus: ${rewardStr(DAILY_BONUS)}</small></div>
+      ${d.bonusClaimed ? '<span class="done-tag">✓</span>' : `<button data-dailybonus ${bonusReady() ? '' : 'disabled'}>Open</button>`}</div></div>`;
+
+    // Fishing
+    const caught = FISH.filter((f) => S.fishLog[f.id]);
+    html += `<h3 class="fun-h">🎣 Fishing at the pier</h3>
+      <div class="card fish-card"><div class="fish-hero">🎣</div>
+        <div class="txt"><b>Cast a line off the old pier</b><small>Wait for the bite, tap fast, then stop the marker in the green. You have <b>${S.bait} 🪱</b>.</small></div>
+        <button data-gofish>Go fishing</button></div>
+      <div class="card fish-log">${FISH.map((f) => `<span class="${S.fishLog[f.id] ? '' : 'unk'}" title="${S.fishLog[f.id] ? f.name : '???'}">${S.fishLog[f.id] ? f.icon : '❔'}<i>${S.fishLog[f.id] || ''}</i></span>`).join('')}
+        <small>${caught.length}/${FISH.length} species found</small></div>`;
+
+    // Family race
+    const rows = raceRows();
+    const leader = raceLeader(rows);
+    const champ = lastChampion(rows);
+    const medals = ['🥇', '🥈', '🥉'];
+    html += `<h3 class="fun-h">🏁 Family race <small>ends in ${untilStr(msToMonday())}</small></h3><div class="card race">`;
+    html += rows.map((r, i) => `<div class="race-row${r.pl.id === P.current ? ' cur' : ''}" style="--pc:${r.pl.color}">
+        <span class="rank">${r.pts > 0 ? (medals[i] || i + 1) : '–'}</span><span class="dotav">${r.pl.avatar}</span>
+        <b>${esc(r.pl.name)}${r.pl.id === leader ? ' 👑' : ''}</b><span class="rpts">⭐ ${r.pts}</span></div>`).join('');
+    html += `<small class="race-help">Earn ⭐: merge 1 · order 10 · pet request +10 · fish 5 · daily task 15</small>
+      ${champ ? `<small class="race-help">Last week's champion: ${champ.avatar} <b>${esc(champ.name)}</b></small>` : ''}</div>`;
+
+    // Team goal
+    const tg = teamGoal();
+    html += `<h3 class="fun-h">🤝 Team goal <small>this week</small></h3><div class="card team">
+      <div class="meter"><span>${tg.g.icon} ${tg.g.text.replace('{n}', tg.target)}</span><b>${Math.min(tg.total, tg.target)}/${tg.target}</b></div>
+      <div class="pbar team-bar">${tg.parts.map((p) => `<div style="width:${(Math.min(p.n, tg.target) / tg.target) * 100}%;background:${p.pl.color}" title="${esc(p.pl.name)}: ${p.n}"></div>`).join('')}</div>
+      <div class="team-parts">${tg.parts.map((p) => `<span><span class="dotav" style="--pc:${p.pl.color}">${p.pl.avatar}</span> ${p.n}</span>`).join('')}</div>
+      <div class="team-foot"><small>Everyone who helps gets ${rewardStr(TEAM_REWARD)}</small>
+      ${S.week.teamClaimed ? '<span class="done-tag">✓ Claimed</span>' : `<button data-team ${tg.done ? '' : 'disabled'}>Claim</button>`}</div></div>`;
+    $('fun').innerHTML = html;
   }
 
   // ---------------------------------------------------------------- UI chrome
@@ -793,9 +1133,15 @@
   window.addEventListener('pointercancel', (ev) => endPointer(ev, true));
 
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
+    const t = ev.target.closest('[data-daily],[data-dailybonus],[data-team],[data-gofish],[data-fish],[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
     if (!t) return;
-    if (t.dataset.edit) editPlayer(t.dataset.edit);
+    if (t.dataset.daily !== undefined) claimDaily(+t.dataset.daily);
+    else if (t.dataset.dailybonus !== undefined) claimDailyBonus();
+    else if (t.dataset.team !== undefined) claimTeam();
+    else if (t.dataset.gofish !== undefined) openFishing();
+    else if (t.dataset.fish === 'cast') cast();
+    else if (t.dataset.fish === 'close') closeFishing();
+    else if (t.dataset.edit) editPlayer(t.dataset.edit);
     else if (t.dataset.play) playAs(t.dataset.play);
     else if (t.dataset.addplayer !== undefined) editPlayer(null);
     else if (t.dataset.switch !== undefined || t.id === 'whoChip') showPicker();
@@ -810,6 +1156,7 @@
       const s = t.dataset.shop;
       if (s === 'deal') buyDeal();
       else if (s === 'slot') buySlot();
+      else if (s === 'bait') buyBait();
       else if (s.startsWith('prod:')) buyProducer(s.slice(5));
       else if (s === 'reset') showModal('⚠️', 'Start over?', `${esc(currentPlayer().name)}'s town and board will be lost. Other players are not affected.`, [
         { label: 'Reset', cls: '', fn: () => { newGame(); save(); switchView('board'); } },
@@ -823,6 +1170,8 @@
     document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
     render();
   }
+
+  $('fishScene').addEventListener('pointerdown', (ev) => { ev.preventDefault(); fishTap(); });
 
   // ---------------------------------------------------------------- boot
   // Always start on "Who's playing?" so nobody plays on someone else's save.

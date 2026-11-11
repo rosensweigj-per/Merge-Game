@@ -98,7 +98,7 @@ button.go, .order button, [data-claim], [data-up] { background: linear-gradient(
 .view.active { display: block; }
 .tabs {
   position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 520px; z-index: 5;
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
   padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
   background: linear-gradient(rgba(255, 240, 210, .0), rgba(255, 232, 190, .95) 30%);
 }
@@ -354,3 +354,92 @@ h3 { color: var(--ink); text-shadow: 0 1px 0 rgba(255, 255, 255, .8); }
 .cmp tr td:first-child { border-left: 5px solid var(--pc); white-space: nowrap; }
 .dotav { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: .85rem; background: var(--pc); }
 .chain-row { margin-bottom: 8px; }
+
+/* ---------- pet requests ---------- */
+.order .reward { text-align: center; line-height: 1.35; }
+.order.urgent .reward { font-size: .64rem; padding: 1px 5px; }
+.order.urgent { border-color: #ff7a3d; background: linear-gradient(#fff3e6, #ffe0c2); animation: nudge 2.4s ease-in-out infinite; }
+@keyframes nudge { 0%, 88%, 100% { transform: rotate(0); } 92% { transform: rotate(-2deg); } 96% { transform: rotate(2deg); } }
+.order .urg {
+  position: absolute; top: -9px; left: 50%; transform: translateX(-50%); z-index: 1; white-space: nowrap;
+  padding: 1px 8px; border-radius: 99px; font-size: .7rem; font-weight: 800; color: #fff;
+  background: linear-gradient(#ff9a5a, #f0601a); border: 2px solid #fff; box-shadow: 0 2px 0 rgba(150, 60, 0, .35);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- fun tab ---------- */
+.fun-h { display: flex; justify-content: space-between; align-items: baseline; margin: 16px 0 6px; }
+.fun-h:first-child { margin-top: 2px; }
+.fun-h small { font-size: .72rem; color: var(--muted); font-weight: 700; }
+.goal.bonus { background: linear-gradient(90deg, rgba(255, 210, 90, .25), transparent); border-radius: 12px; padding-left: 4px; }
+.fish-card { display: flex; align-items: center; gap: 10px; background: linear-gradient(#e6f8ff, #c7ecfb); }
+.fish-hero { font-size: 2.4rem; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .2)); }
+.fish-log { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fish-log span { position: relative; font-size: 1.7rem; }
+.fish-log span i { position: absolute; right: -6px; bottom: -4px; font-size: .6rem; font-style: normal; font-weight: 800; color: #fff; background: var(--accent); border-radius: 99px; padding: 0 4px; }
+.fish-log span i:empty { display: none; }
+.fish-log small { width: 100%; color: var(--muted); font-weight: 700; }
+.race-row { display: flex; align-items: center; gap: 8px; padding: 8px 6px; border-radius: 12px; border-left: 5px solid var(--pc); margin-bottom: 4px; }
+.race-row.cur { background: rgba(255, 255, 255, .7); }
+.race-row .rank { width: 26px; text-align: center; font-size: 1.2rem; font-weight: 800; }
+.race-row b { flex: 1; }
+.race-row .rpts { font-weight: 800; font-variant-numeric: tabular-nums; }
+.race-help { display: block; color: var(--muted); font-weight: 600; margin-top: 6px; font-size: .75rem; }
+.team-bar { display: flex; height: 16px; }
+.team-bar div { border-radius: 0; background-image: linear-gradient(rgba(255, 255, 255, .45), transparent 60%) !important; }
+.team-parts { display: flex; gap: 12px; margin-top: 8px; font-weight: 800; font-size: .85rem; flex-wrap: wrap; }
+.team-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+.team-foot small { color: var(--muted); font-weight: 600; }
+[data-daily], [data-dailybonus], [data-team], [data-gofish] { background: linear-gradient(rgba(255, 255, 255, .45), rgba(255, 255, 255, .08) 50%, rgba(0, 0, 0, .06)), var(--go); }
+
+/* ---------- picker extras ---------- */
+.who-card .crown { position: absolute; top: -16px; left: 50%; transform: translateX(-50%) rotate(-8deg); font-size: 1.9rem; filter: drop-shadow(0 2px 0 rgba(0, 0, 0, .25)); }
+.who-card .pts { color: var(--gold); font-weight: 800; }
+
+/* ---------- fishing ---------- */
+.fishing {
+  position: fixed; inset: 0; z-index: 66; display: none; flex-direction: column; align-items: center; gap: 12px;
+  padding: 14px 16px calc(18px + env(safe-area-inset-bottom));
+  background: linear-gradient(#4fc0f2, #9fe0f7 40%, #ffe7b0);
+}
+.fishing.show { display: flex; }
+.fish-top { width: 100%; max-width: 480px; display: flex; justify-content: space-between; align-items: center; }
+.fish-scene {
+  position: relative; width: 100%; max-width: 480px; flex: 1; max-height: 420px; min-height: 260px; overflow: hidden;
+  border-radius: 24px; border: 3px solid #fff; box-shadow: var(--shadow); touch-action: none; cursor: pointer;
+  background: linear-gradient(#8fdcff 0 34%, #3db2e8 34%, #1d86c8 70%, #135f9e);
+}
+.fish-scene .sun { position: absolute; top: 18px; right: 26px; width: 54px; height: 54px; border-radius: 50%; background: radial-gradient(circle, #fff6b0, #ffd23a 60%, rgba(255, 210, 58, 0) 72%); }
+.fish-scene .waves {
+  position: absolute; left: -20%; right: -20%; top: 34%; height: 70%;
+  background: repeating-linear-gradient(170deg, rgba(255, 255, 255, .0) 0 26px, rgba(255, 255, 255, .16) 26px 30px);
+  animation: drift 6s linear infinite;
+}
+@keyframes drift { to { transform: translateX(60px); } }
+.fish-scene .pier { position: absolute; left: 0; bottom: 0; width: 34%; height: 22%; background: repeating-linear-gradient(90deg, #a8692f 0 18px, #8c5523 18px 21px); border-top: 6px solid #c48443; border-top-right-radius: 10px; }
+.fish-scene .rod { position: absolute; left: 18%; bottom: 14%; font-size: 3.4rem; transform: scaleX(-1) rotate(-10deg); filter: drop-shadow(0 3px 0 rgba(0, 0, 0, .25)); }
+.fish-scene .line { position: absolute; left: 21%; bottom: 33%; width: 42%; height: 1.5px; background: rgba(255, 255, 255, .85); transform-origin: left center; transform: rotate(10deg); display: none; }
+.fish-scene .bobber {
+  position: absolute; left: 62%; top: 52%; width: 24px; height: 24px; border-radius: 50%; display: none;
+  background: linear-gradient(#ef3b2d 50%, #fff 50%); border: 2px solid #333; box-shadow: 0 4px 0 rgba(0, 0, 0, .2);
+}
+.fish-scene .bang { position: absolute; left: calc(62% - 2px); top: calc(52% - 52px); font: 900 2.6rem "Fredoka", sans-serif; color: #fff; text-shadow: 0 3px 0 #e2483d; display: none; animation: pulse .4s infinite; }
+.fish-scene[data-phase="wait"] .bobber, .fish-scene[data-phase="bite"] .bobber, .fish-scene[data-phase="reel"] .bobber { display: block; }
+.fish-scene[data-phase="wait"] .line, .fish-scene[data-phase="bite"] .line, .fish-scene[data-phase="reel"] .line { display: block; }
+.fish-scene[data-phase="wait"] .bobber { animation: bob 1.4s ease-in-out infinite; }
+.fish-scene[data-phase="bite"] .bobber { animation: dip .25s ease-in-out infinite; }
+.fish-scene[data-phase="bite"] .bang { display: block; }
+.fish-scene[data-phase="reel"] .bobber { animation: dip .5s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(5px); } }
+@keyframes dip { 50% { transform: translateY(14px) scale(.9); } }
+.fish-scene .catch { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, .35); }
+.fish-scene[data-phase="result"] .catch:not(:empty) { display: flex; animation: pop .35s ease-out; }
+.fish-scene .catch .big { font-size: 5rem; filter: drop-shadow(0 6px 0 rgba(0, 0, 0, .25)); }
+.fish-scene .catch b { font-size: 1.6rem; }
+.fish-scene .catch small { font-size: 1rem; font-weight: 800; background: rgba(0, 0, 0, .25); padding: 2px 10px; border-radius: 99px; }
+.reel { position: relative; width: 100%; max-width: 480px; height: 30px; border-radius: 99px; background: rgba(255, 255, 255, .8); border: 3px solid #fff; box-shadow: inset 0 2px 4px rgba(0, 0, 0, .2); visibility: hidden; overflow: hidden; }
+.fishing:has(.fish-scene[data-phase="reel"]) .reel { visibility: visible; }
+.reel .zone { position: absolute; top: 0; bottom: 0; background: linear-gradient(#9be86a, #4fb52a); }
+.reel .marker { position: absolute; top: -3px; bottom: -3px; width: 6px; margin-left: -3px; background: #2b1a0e; border-radius: 3px; box-shadow: 0 0 0 2px #fff; }
+.fish-msg { margin: 0; min-height: 1.4em; text-align: center; font-weight: 800; font-size: 1.05rem; color: var(--ink); }
+.cast { width: 100%; max-width: 480px; font-size: 1.2rem; padding: 14px; background: linear-gradient(rgba(255, 255, 255, .45), rgba(255, 255, 255, .08) 50%, rgba(0, 0, 0, .06)), var(--go); }

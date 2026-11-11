@@ -202,3 +202,51 @@ const GOALS = [
   { id: 'collectAll',icon: '🏆', text: 'Complete the collection',      target: TOTAL_ITEMS, get: (s) => sumValues(s.discovered), reward: { gems: 30 } },
   { id: 'town',      icon: '🗼', text: 'Rebuild the whole town',       target: TOTAL_STAGES, get: (s) => sumValues(s.town), reward: { gems: 50 } },
 ];
+
+// ---------------------------------------------------------------- daily tasks
+// Three of these are picked each day per player. `n` lists possible targets.
+const DAILY_TASKS = [
+  { type: 'merge',      n: [15, 25, 40] },
+  { type: 'mergeChain', n: [8, 12] },
+  { type: 'make',       n: [20, 35] },
+  { type: 'order',      n: [3, 5] },
+  { type: 'orderPet',   n: [1, 2] },
+  { type: 'fish',       n: [2, 3] },
+];
+const DAILY_BONUS = { gems: 5, bait: 3 };   // for finishing all three
+
+// ---------------------------------------------------------------- pet requests
+const URGENT_CHANCE = 0.18;   // chance a new order is a timed pet request
+const URGENT_MINUTES = 10;
+const URGENT_GEMS = 2;        // plus double coins & XP
+
+// ---------------------------------------------------------------- fishing
+const BAIT_DAILY = 5;         // bait is topped up to this each day
+const BAIT_ORDER_CHANCE = 0.2;
+const BAIT_SHOP = { amount: 5, gems: 3 };
+// Tiers set how hard a catch is: bite window (ms), green zone width, marker speed.
+const FISH_TIERS = [
+  { win: 1200, zone: 0.34, speed: 0.6 },
+  { win: 1050, zone: 0.30, speed: 0.7 },
+  { win: 900,  zone: 0.24, speed: 0.85 },
+  { win: 800,  zone: 0.19, speed: 1.0 },
+  { win: 650,  zone: 0.15, speed: 1.2 },
+];
+const FISH = [
+  { id: 'boot',    icon: '🥾', name: 'Old Boot',     weight: 12, tier: 0, coins: 2 },
+  { id: 'sardine', icon: '🐟', name: 'Sardine',      weight: 40, tier: 1, coins: 8 },
+  { id: 'clown',   icon: '🐠', name: 'Clownfish',    weight: 25, tier: 2, coins: 15 },
+  { id: 'puffer',  icon: '🐡', name: 'Pufferfish',   weight: 12, tier: 3, coins: 30, tools: 1 },
+  { id: 'chest',   icon: '🧰', name: 'Sunken Chest', weight: 6,  tier: 3, coins: 20, tools: 2 },
+  { id: 'shark',   icon: '🦈', name: 'Shark',        weight: 5,  tier: 4, coins: 60, gems: 3 },
+];
+
+// ---------------------------------------------------------------- family race & team goal
+const RACE_POINTS = { merge: 1, order: 10, urgent: 10, fish: 5, daily: 15 };
+// One team goal per week, rotating. Target = `per` × number of players.
+const TEAM_GOALS = [
+  { stat: 'orders', per: 25,  icon: '📦', text: 'Deliver {n} orders together' },
+  { stat: 'merges', per: 250, icon: '✨', text: 'Make {n} merges together' },
+  { stat: 'fish',   per: 15,  icon: '🎣', text: 'Catch {n} fish together' },
+];
+const TEAM_REWARD = { gems: 15, tools: { brick: 2 } };
