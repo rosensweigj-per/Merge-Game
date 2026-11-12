@@ -102,7 +102,9 @@
   function save() {
     if (!P || !S) return;
     S.stats.lastPlayed = now();
+    S.updatedAt = now();
     try { localStorage.setItem(saveKey(P.current), JSON.stringify(S)); } catch (_) { /* storage unavailable */ }
+    schedulePush();
   }
   function loadSave(id) {
     try {
@@ -157,8 +159,21 @@
     document.title = `Harbor Merge · ${p.name}`;
   }
 
-  function playAs(id) {
-    if (S) save();
+  async function playAs(id) {
+    if (S) { save(); flushPush(); }
+    // With family sync, fetch this player's latest game first so an old copy
+    // on this phone never overwrites newer progress made on another phone.
+    if (cloudOn() && family) {
+      try {
+        const doc = await fsGet(`/saves/${id}`);
+        const local = rawSave(id);
+        if (doc && (+field(doc, 'updated') || 0) > ((local && local.updatedAt) || 0)) localStorage.setItem(saveKey(id), field(doc, 'data'));
+        setSync('ok');
+      } catch (_) {
+        setSync('error');
+        if (!rawSave(id)) { toast('Can’t load this game from the online save right now. Check your connection.'); return; }
+      }
+    }
     P.current = id;
     saveProfiles();
     S = loadSave(id);
@@ -194,7 +209,13 @@
   }
 
   function showPicker() {
-    if (S) save();
+    if (S) { save(); flushPush(); }
+    renderPicker();
+    $('who').classList.add('show');
+    pullAndRefresh();
+  }
+
+  function renderPicker() {
     const rows = raceRows();
     const leader = raceLeader(rows);
     $('whoList').innerHTML = P.list.map((p) => {
@@ -206,7 +227,7 @@
         <div class="av">${p.avatar}</div><b>${esc(p.name)}</b><small>${line}</small>${sm ? `<small class="pts">⭐ ${pts} this week</small>` : ''}
         <button class="ghost edit" data-edit="${p.id}" title="Edit player">✏️</button></div>`;
     }).join('') + `<div class="who-card add" data-addplayer><div class="av">＋</div><b>Add player</b></div>`;
-    $('who').classList.add('show');
+    $('syncBar').innerHTML = syncBar();
   }
 
   function editPlayer(id) {
@@ -242,8 +263,8 @@
             P.list = P.list.filter((x) => x.id !== p.id);
             try { localStorage.removeItem(saveKey(p.id)); } catch (_) { /* ignore */ }
             if (P.current === p.id) { P.current = P.list[0].id; S = null; }
-            saveProfiles();
-            showPicker();
+            profilesChanged();
+            renderPicker();
           } },
           { label: 'Cancel', cls: 'ghost', fn: () => editPlayer(p.id) },
         ]);
@@ -253,12 +274,240 @@
         if (!p.name) { $('pname').focus(); toast('Enter a name'); return; }
         if (isNew) P.list.push(p);
         else Object.assign(P.list.find((x) => x.id === p.id), p);
-        saveProfiles();
+        profilesChanged();
         $('modal').classList.remove('show');
         if (S && p.id === P.current) applyTheme();
-        showPicker();
+        renderPicker();
       }
     };
+  }
+
+  // ---------------------------------------------------------------- family cloud sync
+  // Every phone in a "family" shares the player list and each player's save through
+  // Firestore (REST API, no SDK). Each save carries `updatedAt`; the newest copy wins.
+  const FAMILY_KEY = 'harbor-merge-family';
+  const cfg = () => window.CLOUD_CONFIG || {};
+  const cloudOn = () => !!(cfg().apiKey && cfg().projectId);
+  let family = null;
+  try { family = localStorage.getItem(FAMILY_KEY); } catch (_) { /* ignore */ }
+  const sync = { status: 'idle', at: 0 };
+  let pushTimer = null;
+
+  const fsUrl = (path) => `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(cfg().projectId)}/databases/(default)/documents/families/${encodeURIComponent(family)}${path}${path.includes('?') ? '&' : '?'}key=${encodeURIComponent(cfg().apiKey)}`;
+  async function fsGet(path) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 8000);
+    try {
+      const r = await fetch(fsUrl(path), { signal: ctl.signal });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } finally { clearTimeout(timer); }
+  }
+  async function fsPut(path, fields, keepalive = false) {
+    const body = JSON.stringify({ fields: Object.fromEntries(Object.entries(fields).map(([k, v]) =>
+      [k, typeof v === 'number' ? { integerValue: String(v) } : { stringValue: v }])) });
+    const r = await fetch(fsUrl(path), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body, keepalive });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  }
+  const field = (doc, k) => (doc && doc.fields && doc.fields[k] ? (doc.fields[k].stringValue ?? doc.fields[k].integerValue) : null);
+  const rawSave = (id) => { try { return JSON.parse(localStorage.getItem(saveKey(id))); } catch (_) { return null; } };
+  const genCode = () => {
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const part = () => Array.from({ length: 5 }, () => abc[rand(abc.length)]).join('');
+    return `HM-${part()}-${part()}`;
+  };
+
+  function setSync(status) {
+    sync.status = status;
+    if (status === 'ok') sync.at = now();
+    document.querySelectorAll('.sync-status').forEach((el) => { el.textContent = syncText(); });
+  }
+  const syncText = () => (sync.status === 'syncing' ? 'Syncing…'
+    : sync.status === 'error' ? 'Offline — will retry'
+    : sync.at ? `Synced ${ago(sync.at)}` : 'Not synced yet');
+
+  function profilesChanged() {
+    P.updated = now();
+    saveProfiles();
+    pushProfiles().catch(() => setSync('error'));
+  }
+  async function pushProfiles() {
+    if (!cloudOn() || !family) return;
+    await fsPut('', { profiles: JSON.stringify(P.list), updated: P.updated || now() });
+  }
+
+  function schedulePush() {
+    if (!cloudOn() || !family) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => flushPush(), 2500);
+  }
+  // Upload the current player's save now. The body is built before any await,
+  // so it always belongs to the player who was active when this was called.
+  function flushPush(keepalive = false) {
+    clearTimeout(pushTimer);
+    pushTimer = null;
+    if (!cloudOn() || !family || !S || !P.current) return Promise.resolve();
+    return fsPut(`/saves/${P.current}`, { data: JSON.stringify(S), updated: S.updatedAt || now() }, keepalive)
+      .then(() => setSync('ok'), () => setSync('error'));
+  }
+
+  // Download the player list and everyone's saves; keep whichever copy is newer.
+  async function cloudPull() {
+    if (!cloudOn() || !family) return false;
+    setSync('syncing');
+    try {
+      const [fam, list] = await Promise.all([fsGet(''), fsGet('/saves?pageSize=100')]);
+      let changed = false;
+      if (fam) {
+        const updated = +field(fam, 'updated') || 0;
+        if (updated > (P.updated || 0)) {
+          P.list = JSON.parse(field(fam, 'profiles'));
+          P.updated = updated;
+          if (!P.list.some((p) => p.id === P.current)) P.current = P.list[0].id;
+          saveProfiles();
+          if (S) applyTheme();
+          changed = true;
+        }
+      }
+      for (const doc of (list && list.documents) || []) {
+        const id = doc.name.split('/').pop();
+        const updated = +field(doc, 'updated') || 0;
+        const local = rawSave(id);
+        if (updated <= ((local && local.updatedAt) || 0)) continue;
+        const data = field(doc, 'data');
+        try { localStorage.setItem(saveKey(id), data); } catch (_) { /* ignore */ }
+        if (S && id === P.current) { S = loadSave(id); rollDaily(); sel = -1; }
+        changed = true;
+      }
+      setSync('ok');
+      return changed;
+    } catch (_) {
+      setSync('error');
+      return false;
+    }
+  }
+
+  // Pull, then refresh whatever is on screen if anything changed.
+  function pullAndRefresh() {
+    return cloudPull().then((changed) => {
+      if (!changed) return;
+      if ($('who').classList.contains('show')) renderPicker();
+      else if (S && !(drag && drag.started)) render();
+    });
+  }
+
+  async function createFamily() {
+    if (!cloudOn()) return;
+    const code = genCode();
+    family = code;
+    setSync('syncing');
+    try {
+      P.updated = now();
+      await pushProfiles();
+      for (const pl of P.list) {
+        const raw = localStorage.getItem(saveKey(pl.id));
+        if (raw) await fsPut(`/saves/${pl.id}`, { data: raw, updated: (JSON.parse(raw).updatedAt) || now() });
+      }
+      try { localStorage.setItem(FAMILY_KEY, code); } catch (_) { /* ignore */ }
+      saveProfiles();
+      setSync('ok');
+      renderPicker();
+      showFamilyCode(true);
+    } catch (_) {
+      family = null;
+      setSync('error');
+      toast('Could not reach the online save. Check your connection.');
+    }
+  }
+
+  // Join an existing family. Local players are matched to the family's players by name;
+  // whichever copy of a player's game has more progress is kept.
+  async function joinFamily(input) {
+    const code = String(input || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (!code) return;
+    const prev = family;
+    family = code;
+    setSync('syncing');
+    try {
+      const fam = await fsGet('');
+      if (!fam) throw new Error('notfound');
+      const list = await fsGet('/saves?pageSize=100');
+      const profiles = JSON.parse(field(fam, 'profiles'));
+      const saves = {};
+      for (const doc of (list && list.documents) || []) saves[doc.name.split('/').pop()] = JSON.parse(field(doc, 'data'));
+      const progress = (s) => (s ? s.level * 1000 + ((s.stats && s.stats.orders) || 0) * 10 + ((s.stats && s.stats.merges) || 0) : -1);
+      const uploads = [];
+      for (const lp of P.list) {
+        const ls = rawSave(lp.id);
+        let rp = profiles.find((r) => r.name.trim().toLowerCase() === lp.name.trim().toLowerCase());
+        if (!rp) { if (!ls) continue; rp = { ...lp }; profiles.push(rp); }
+        if (ls && progress(ls) > progress(saves[rp.id])) {
+          ls.updatedAt = now();
+          saves[rp.id] = ls;
+          uploads.push(rp.id);
+        }
+      }
+      const curName = currentPlayer() ? currentPlayer().name : '';
+      P.list.forEach((lp) => { try { localStorage.removeItem(saveKey(lp.id)); } catch (_) { /* ignore */ } });
+      Object.entries(saves).forEach(([id, s]) => { try { localStorage.setItem(saveKey(id), JSON.stringify(s)); } catch (_) { /* ignore */ } });
+      P.list = profiles;
+      P.updated = now();
+      P.seeded = DEFAULT_PLAYERS.map((d) => d.name);
+      P.current = (P.list.find((p) => p.name === curName) || P.list[0]).id;
+      saveProfiles();
+      try { localStorage.setItem(FAMILY_KEY, code); } catch (_) { /* ignore */ }
+      await pushProfiles();
+      for (const id of uploads) await fsPut(`/saves/${id}`, { data: JSON.stringify(saves[id]), updated: saves[id].updatedAt });
+      S = null;
+      setSync('ok');
+      renderPicker();
+      toast('You joined the family! Everyone’s progress is shared now.');
+    } catch (e) {
+      family = prev;
+      setSync(prev ? 'ok' : 'idle');
+      toast(e.message === 'notfound' ? 'No family found with that code' : 'Could not reach the online save. Check your connection.');
+    }
+  }
+
+  function leaveFamily() {
+    showModal('☁️', 'Stop syncing?', 'This phone keeps its current copy of every game, but stops sharing progress with the family.', [
+      { label: 'Stop syncing', fn: () => { family = null; try { localStorage.removeItem(FAMILY_KEY); } catch (_) { /* ignore */ } renderPicker(); } },
+      { label: 'Cancel', cls: 'ghost' },
+    ]);
+  }
+
+  function showFamilyCode(isNew) {
+    showModal('👨‍👩‍👧', isNew ? 'Family created!' : 'Family code',
+      `On Shelly's and Livy's phones, open the game, tap <b>Join with code</b> and type:<br><span class="fam-code">${esc(family)}</span>`,
+      [{ label: 'Copy code', fn: () => { try { navigator.clipboard.writeText(family); toast('Code copied'); } catch (_) { /* ignore */ } } }, { label: 'Done', cls: 'ghost' }]);
+  }
+
+  function promptJoin() {
+    $('dialog').innerHTML = `<div class="big">👨‍👩‍👧</div><h2>Join your family</h2>
+      <p>Type the family code shown on the phone that created the family.</p>
+      <input id="famInput" placeholder="HM-XXXXX-XXXXX" autocapitalize="characters" autocomplete="off" spellcheck="false">
+      <div class="row"><button class="ghost" data-j="cancel">Cancel</button><button data-j="join">Join</button></div>`;
+    $('modal').classList.add('show');
+    setTimeout(() => $('famInput').focus(), 50);
+    $('dialog').onclick = (ev) => {
+      const b = ev.target.closest('[data-j]');
+      if (!b) return;
+      const v = $('famInput').value;
+      $('modal').classList.remove('show');
+      if (b.dataset.j === 'join') joinFamily(v);
+    };
+  }
+
+  function syncBar() {
+    if (!cloudOn()) return '';
+    if (!family) {
+      return `<div class="sync-bar"><b>☁️ Play together on different phones</b>
+        <small>Create a family on one phone, then join with the code on the others to share everyone's progress.</small>
+        <div class="row"><button data-sync="create">Create family</button><button class="ghost" data-sync="join">Join with code</button></div></div>`;
+    }
+    return `<div class="sync-bar on"><div><b>☁️ Family sync on</b><small>Code: ${esc(family)}</small><small class="sync-status">${syncText()}</small></div>
+      <div class="row"><button class="ghost" data-sync="code">Share code</button><button class="ghost" data-sync="leave">Stop</button></div></div>`;
   }
 
   // ---------------------------------------------------------------- goals
@@ -977,7 +1226,7 @@
         <div class="card"><b>${fmt(S.stats.made)}</b><small>Items made</small></div>
         <div class="card"><b>${fmt(S.stats.coinsEarned)}</b><small>Coins earned</small></div>
       </div>
-      <h3>Players</h3><div class="card"><table class="cmp"><thead><tr><th></th><th>Lv</th><th>Town</th><th>Items</th><th>Orders</th><th>Played</th></tr></thead><tbody>`;
+      <h3>Players${family ? ` <small class="sync-status">${syncText()}</small>` : ''}</h3><div class="card"><table class="cmp"><thead><tr><th></th><th>Lv</th><th>Town</th><th>Items</th><th>Orders</th><th>Played</th></tr></thead><tbody>`;
     html += P.list.map((pl) => {
       const sm = summary(pl.id);
       return `<tr class="${pl.id === P.current ? 'cur' : ''}" style="--pc:${pl.color}">
@@ -1133,9 +1382,15 @@
   window.addEventListener('pointercancel', (ev) => endPointer(ev, true));
 
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-daily],[data-dailybonus],[data-team],[data-gofish],[data-fish],[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
+    const t = ev.target.closest('[data-sync],[data-daily],[data-dailybonus],[data-team],[data-gofish],[data-fish],[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
     if (!t) return;
-    if (t.dataset.daily !== undefined) claimDaily(+t.dataset.daily);
+    if (t.dataset.sync) {
+      const a = t.dataset.sync;
+      if (a === 'create') createFamily();
+      else if (a === 'join') promptJoin();
+      else if (a === 'code') showFamilyCode(false);
+      else if (a === 'leave') leaveFamily();
+    } else if (t.dataset.daily !== undefined) claimDaily(+t.dataset.daily);
     else if (t.dataset.dailybonus !== undefined) claimDailyBonus();
     else if (t.dataset.team !== undefined) claimTeam();
     else if (t.dataset.gofish !== undefined) openFishing();
@@ -1169,6 +1424,7 @@
     document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${name}`));
     document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.view === name));
     render();
+    if (name === 'fun' || name === 'progress') pullAndRefresh();
   }
 
   $('fishScene').addEventListener('pointerdown', (ev) => { ev.preventDefault(); fishTap(); });
@@ -1179,5 +1435,10 @@
   saveProfiles();
   showPicker();
   setInterval(() => { if (S) tick(); }, 1000);
+  setInterval(() => { if (!document.hidden) pullAndRefresh(); }, 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (pushTimer) flushPush(true); } else pullAndRefresh();
+  });
+  window.addEventListener('pagehide', () => { if (pushTimer) flushPush(true); });
   window.__game = { get state() { return S; } }; // debugging handle
 })();

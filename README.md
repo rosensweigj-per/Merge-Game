@@ -27,6 +27,39 @@ Saves are stored in the browser, so players who share a device share the list. D
 
 Now and then Cooper, Izzy or Lexi makes an urgent request (orange card with a ⏰ timer). Fill it within 10 minutes for double coins and XP plus 2💎. Otherwise it disappears and a normal order takes its place.
 
+## Online family sync (play on different phones)
+
+Saves are stored in each phone's browser. To see each other's progress on different phones, connect the game to a free **Firebase** project once. After that:
+
+1. On one phone, open the game. On **Who's playing?**, tap **Create family**. A code like `HM-ABCDE-FGHJK` appears.
+2. On every other phone, tap **Join with code** and type it in. Players are matched by name, and whichever copy of a player's game has more progress is kept.
+3. From then on, each phone uploads progress as you play and downloads everyone else's about every 30 seconds (and whenever you open the picker, Fun or Progress). The family race, team goal and Players table then include everyone.
+
+Any phone can play any player. Before a game opens, its latest copy is downloaded so older progress never overwrites newer progress.
+
+### One-time Firebase setup (about 10 minutes)
+
+1. Go to <https://console.firebase.google.com>, click **Create a project**, name it (for example `harbor-merge`) and finish the wizard. Google Analytics isn't needed.
+2. In the left menu, open **Build → Firestore Database** and click **Create database**. Pick a location near you and start in **production mode**.
+3. Open the **Rules** tab, replace everything with the rules below, and click **Publish**:
+
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /families/{family} {
+         allow get, create, update: if family.size() >= 14;
+       }
+       match /families/{family}/saves/{player} {
+         allow read, create, update: if family.size() >= 14;
+       }
+     }
+   }
+   ```
+
+4. Click the ⚙️ gear → **Project settings**. Under **Your apps**, click the **`</>`** (Web) icon, give it a nickname, and register it (skip Hosting).
+5. Copy the `apiKey` and `projectId` values it shows into `js/cloud-config.js`, then commit. These two values are meant to be public. The family code is what keeps your family's data separate, so share it only with your family.
+
 ## Progress tab
 
 - Level, XP, and town / collection / goal completion bars
