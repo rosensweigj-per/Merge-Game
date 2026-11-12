@@ -23,6 +23,27 @@
     return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}:${String(s).padStart(2, '0')}`;
   };
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  // Haptic tap. Android: Vibration API. iPhone has no vibrate API, but toggling a
+  // native switch control gives a light tap on recent iOS versions.
+  let hapticLabel = null;
+  function haptic(pattern = 12) {
+    try {
+      if (navigator.vibrate) { navigator.vibrate(pattern); return; }
+      if (!hapticLabel) {
+        hapticLabel = document.createElement('label');
+        hapticLabel.setAttribute('aria-hidden', 'true');
+        hapticLabel.style.display = 'none';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.setAttribute('switch', '');
+        hapticLabel.appendChild(input);
+        document.body.appendChild(hapticLabel);
+      }
+      const taps = Array.isArray(pattern) ? Math.ceil(pattern.length / 2) : 1;
+      for (let i = 0; i < taps; i++) setTimeout(() => hapticLabel.click(), i * 110);
+    } catch (_) { /* haptics unavailable */ }
+  }
+
   const fmt = (n) => n >= 10000 ? (n / 1000).toFixed(n >= 100000 ? 0 : 1) + 'k' : String(n);
   const itemInfo = (c, l) => CHAINS[c].items[l - 1];
   const chainMax = (c) => CHAINS[c].items.length;
@@ -577,6 +598,7 @@
     if (o.tool) { S.tools[o.tool] += o.toolN; msg += ` +${o.toolN}${TOOLS[o.tool].icon}`; }
     if (o.gems) { S.gems += o.gems; msg += ` +${o.gems}💎`; }
     if (Math.random() < BAIT_ORDER_CHANCE) { S.bait++; msg += ' +1🪱'; }
+    haptic([18, 40, 30]);
     track('order', { pet: characterFor(oi).id });
     if (o.urgent) track('urgent');
     S.orders[oi] = makeOrder(oi);
@@ -655,9 +677,11 @@
         const merged = newItem(a.c, a.l + 1);
         S.board[to] = merged;
         discover(merged);
+        haptic(a.l >= 4 ? [14, 40, 22] : 14);
       } else {
         S.board[to] = newProducer(a.p, a.l + 1);
         S.stats.bestProducer = Math.max(S.stats.bestProducer, a.l + 1);
+        haptic([20, 50, 20, 50, 40]);
         toast(`${PRODUCERS[a.p].name} upgraded to level ${a.l + 1}!`);
       }
       popAt = to;
@@ -956,7 +980,7 @@
   }
   function bite() {
     fishShow('bite', 'A bite! TAP NOW!');
-    if (navigator.vibrate) navigator.vibrate(60);
+    haptic(60);
     fishing.timer = setTimeout(() => fishMiss('Too slow — it got away.'), fishing.tier.win);
   }
   function startReel() {
@@ -1006,7 +1030,7 @@
     save();
     $('catch').innerHTML = `<span class="big">${f.icon}</span><b>${f.name}!</b><small>+${rewardStr(reward)}</small>`;
     fishShow('result', f.id === 'boot' ? 'Well… it’s a catch!' : 'Nice catch!');
-    if (navigator.vibrate) navigator.vibrate([40, 40, 80]);
+    haptic([40, 40, 80]);
   }
 
   // ---------------------------------------------------------------- pet requests
@@ -1069,7 +1093,7 @@
       const ready = m.every((i) => i >= 0);
       const reqs = o.reqs.map((r, ri) => {
         const [icon, name] = itemInfo(r.c, r.l);
-        return `<span class="req${m[ri] >= 0 ? ' have' : ''}" title="${name} (Lv ${r.l})"><i>${r.l}</i>${icon}</span>`;
+        return `<span class="req${m[ri] >= 0 ? ' have' : ''}" data-req="${r.c}:${r.l}" title="${name} (Lv ${r.l}) · made with the ${PRODUCERS[producerOf(r.c)].name}. Tap for the recipe."><i>${r.l}</i>${icon}</span>`;
       }).join('');
       const reward = `🪙${o.coins} ⭐${o.xp}` + (o.tool ? ` ${TOOLS[o.tool].icon}${o.toolN}` : '') + (o.gems ? ` 💎${o.gems}` : '');
       const ch = characterFor(oi);
@@ -1092,12 +1116,40 @@
     return `<div class="${cls}" title="${entName(e)}">${entIcon(e)}<span class="lv">${e.l}</span>${extra}</div>`;
   }
 
+  // "How do I make this?" for an item an order asks for.
+  const producerOf = (c) => Object.keys(PRODUCERS).find((k) => PRODUCERS[k].makes === c);
+  let flashProducer = null, flashUntil = 0;
+  function showRecipe(c, l) {
+    const pid = producerOf(c), pd = PRODUCERS[pid];
+    const [icon, name] = itemInfo(c, l);
+    const base = CHAINS[c].items[0];
+    const steps = CHAINS[c].items.slice(0, l)
+      .map((it, i) => `<span class="step${i === l - 1 ? ' target' : ''}" title="${it[1]}">${it[0]}<i>${i + 1}</i></span>`).join('<em>›</em>');
+    const onBoard = S.board.some((e) => e && e.k === 'p' && e.p === pid);
+    const stored = S.storage.some((e) => e && e.k === 'p' && e.p === pid);
+    const where = onBoard ? '' : stored
+      ? `<span class="recipe-note">Your ${pd.name} is in storage 📦. Tap it there to bring it back.</span>`
+      : `<span class="recipe-note">You don't have a ${pd.name} right now. Get one in the Shop 🛍️.</span>`;
+    const buttons = onBoard
+      ? [{ label: 'Show me', fn: () => {
+          flashProducer = pid; flashUntil = now() + 3200;
+          switchView('board');
+          setTimeout(() => { if (S) render(); }, 3300);
+        } }, { label: 'OK', cls: 'ghost' }]
+      : [{ label: 'OK' }];
+    showModal(icon, `${name} · Lv ${l}`,
+      `Tap the <b>${pd.icon} ${pd.name}</b>, then merge your way up:
+       <span class="recipe"><span class="step prod" title="${pd.name}">${pd.icon}</span><em>›</em>${steps}</span>
+       <span class="recipe-note">One ${name} takes ${2 ** (l - 1)} × ${base[0]} ${base[1]}.</span>${where}`, buttons);
+  }
+
   function renderBoard() {
     const selEnt = S.board[sel];
     $('board').innerHTML = S.board.map((e, i) => {
       let cls = 'cell';
       if (i === sel) cls += ' selected';
       else if (selEnt && canMerge(selEnt, e)) cls += ' match';
+      if (e && e.k === 'p' && e.p === flashProducer && now() < flashUntil) cls += ' flash';
       return `<div class="${cls}" data-cell="${i}">${e ? entHtml(e, i) : ''}</div>`;
     }).join('');
   }
@@ -1382,9 +1434,10 @@
   window.addEventListener('pointercancel', (ev) => endPointer(ev, true));
 
   document.addEventListener('click', (ev) => {
-    const t = ev.target.closest('[data-sync],[data-daily],[data-dailybonus],[data-team],[data-gofish],[data-fish],[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
+    const t = ev.target.closest('[data-req],[data-sync],[data-daily],[data-dailybonus],[data-team],[data-gofish],[data-fish],[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
     if (!t) return;
-    if (t.dataset.sync) {
+    if (t.dataset.req) { const [c, l] = t.dataset.req.split(':'); showRecipe(c, +l); }
+    else if (t.dataset.sync) {
       const a = t.dataset.sync;
       if (a === 'create') createFamily();
       else if (a === 'join') promptJoin();

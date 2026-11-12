@@ -23,6 +23,12 @@ Saves are stored in the browser, so players who share a device share the list. D
 - **Family race**: everyone on this device earns ⭐ each week (merge 1, order 10, pet request +10, fish 5, daily task 15). The leader gets a 👑 on the "Who's playing?" screen, and last week's champion is shown.
 - **Team goal**: one shared weekly goal (orders, merges or fish, rotating) that scales with the number of players. When the team reaches it, each player claims 15💎 + 2🧱.
 
+## Handy touches
+
+- **What makes this?** Tap (or hover over) any item an order asks for to see which producer makes it and the merge steps. **Show me** flashes that producer on the board.
+- **Haptics**: a light tap when you merge, a stronger one for big merges, producer upgrades and deliveries. Android uses the vibration API; iPhones use a native-switch trick that works on recent iOS versions.
+- **App icon**: add the game to your home screen (Share → *Add to Home Screen*) for a beach-pail icon and a full-screen app feel.
+
 ## Pet requests
 
 Now and then Cooper, Izzy or Lexi makes an urgent request (orange card with a ⏰ timer). Fill it within 10 minutes for double coins and XP plus 2💎. Otherwise it disappears and a normal order takes its place.
