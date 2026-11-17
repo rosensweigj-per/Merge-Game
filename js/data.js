@@ -177,7 +177,7 @@ const AREAS = [
 const AVATARS = ['🧑', '👩', '👨', '🧒', '👧', '👦', '🐚', '🐢', '🦭', '🐙', '🌸', '⭐', '🦄', '🐶', '🐱', '🦊'];
 const PLAYER_COLORS = ['#1f8fa6', '#d0568f', '#7a5bd6', '#d9822b', '#3c9a4a', '#c0473a'];
 const DEFAULT_PLAYERS = [
-  { name: 'Me', avatar: '🧑', color: '#1f8fa6' },
+  { name: 'Jason', avatar: '🧑', color: '#1f8fa6' },
   { name: 'Shelly', avatar: '🐚', color: '#d0568f' },
   { name: 'Livy', avatar: '🦄', color: '#7a5bd6' },
 ];

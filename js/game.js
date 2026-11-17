@@ -153,14 +153,28 @@
       const old = localStorage.getItem(LEGACY_SAVE_KEY);
       if (old) { localStorage.setItem(saveKey(list[0].id), old); localStorage.removeItem(LEGACY_SAVE_KEY); }
     } catch (_) { /* ignore */ }
-    return { list, current: list[0].id, seeded: DEFAULT_PLAYERS.map((d) => d.name) };
+    return { list, current: list[0].id, seeded: DEFAULT_PLAYERS.map((d) => d.name), renamedMe: true };
   }
 
   // Default players added in later versions (e.g. Livy) appear for existing installs,
   // but a default player someone deleted is not brought back.
+  // The first default player used to be called "Me"; it's Jason now.
+  // Renames it once per device (if nobody is already called Jason) and syncs the change.
+  function renameMe(p) {
+    if (p.seeded) p.seeded = p.seeded.map((n) => (n === 'Me' ? 'Jason' : n));
+    if (p.renamedMe) return false;
+    p.renamedMe = true;
+    const me = p.list.find((x) => x.name === 'Me');
+    if (!me || p.list.some((x) => x.name === 'Jason')) return false;
+    me.name = 'Jason';
+    p.updated = now();
+    return true;
+  }
+
   function addNewDefaults(p) {
-    // Installs from before this field existed were seeded with Me + Shelly.
-    if (!p.seeded) p.seeded = ['Me', 'Shelly'];
+    // Installs from before this field existed were seeded with Me (now Jason) + Shelly.
+    if (!p.seeded) p.seeded = ['Jason', 'Shelly'];
+    renameMe(p);
     DEFAULT_PLAYERS.forEach((d, i) => {
       if (p.seeded.includes(d.name)) return;
       if (!p.list.some((x) => x.name === d.name)) p.list.push({ id: newId() + i, ...d });
@@ -385,6 +399,7 @@
         if (updated > (P.updated || 0)) {
           P.list = JSON.parse(field(fam, 'profiles'));
           P.updated = updated;
+          if (P.list.some((x) => x.name === 'Me')) { P.renamedMe = false; if (renameMe(P)) pushProfiles().catch(() => {}); }
           if (!P.list.some((p) => p.id === P.current)) P.current = P.list[0].id;
           saveProfiles();
           if (S) applyTheme();
@@ -1067,6 +1082,7 @@
   }
 
   function render() {
+    if (!(drag && drag.started)) document.querySelectorAll('.drag-ghost').forEach((g) => g.remove());
     renderHud();
     const view = document.querySelector('.view.active').id;
     if (view === 'view-board') { renderOrders(); renderBoard(); renderInfo(); renderStorage(); }
@@ -1388,15 +1404,29 @@
     else render();
   }
 
+  // Drop any drag in progress and every floating copy, e.g. after iOS loses a touch.
+  function cancelDrag() {
+    const had = drag && drag.started;
+    if (drag && drag.ghost) drag.ghost.remove();
+    document.querySelectorAll('.drag-ghost').forEach((g) => g.remove());
+    drag = null;
+    clearHover();
+    if (had && S) render();
+  }
+
   $('board').addEventListener('pointerdown', (ev) => {
     const cell = ev.target.closest('[data-cell]');
     if (!cell) return;
     ev.preventDefault();
-    drag = { from: +cell.dataset.cell, x: ev.clientX, y: ev.clientY, id: ev.pointerId, started: false };
+    if (drag) cancelDrag();   // a new touch while one is still active: never orphan its floating copy
+    drag = { from: +cell.dataset.cell, x: ev.clientX, y: ev.clientY, lx: ev.clientX, ly: ev.clientY, id: ev.pointerId, started: false };
+    try { $('board').setPointerCapture(ev.pointerId); } catch (_) { /* not supported */ }
   });
 
   window.addEventListener('pointermove', (ev) => {
     if (!drag || ev.pointerId !== drag.id) return;
+    drag.lx = ev.clientX;
+    drag.ly = ev.clientY;
     if (!drag.started) {
       const e = S.board[drag.from];
       if (!e || Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 8) return;
@@ -1418,20 +1448,31 @@
     if (t) t.el.classList.add('hover');
   });
 
-  function endPointer(ev, cancelled) {
-    if (!drag || ev.pointerId !== drag.id) return;
+  function endPointer(ev, cancelled, x = ev.clientX, y = ev.clientY) {
+    if (!drag) return;
+    // A started drag ends on any lifted pointer (iOS can report a different id); a tap must match.
+    if (ev.pointerId !== undefined && ev.pointerId !== drag.id && !drag.started) return;
     const d = drag;
     drag = null;
-    if (!d.started) { if (!cancelled) tapCell(d.from); return; }
-    d.ghost.remove();
+    document.querySelectorAll('.drag-ghost').forEach((g) => g.remove());
     clearHover();
-    const t = cancelled ? null : dropTarget(ev.clientX, ev.clientY);
+    if (!d.started) { if (!cancelled) tapCell(d.from); return; }
+    const t = cancelled ? null : dropTarget(x, y);
     if (t && t.type === 'cell') moveOrMerge(d.from, t.i);
     else if (t && t.type === 'storage') store(d.from);
     else render();
   }
   window.addEventListener('pointerup', (ev) => endPointer(ev, false));
   window.addEventListener('pointercancel', (ev) => endPointer(ev, true));
+  // Safety nets for iOS: if the last finger lifts but no pointerup arrives, drop at the last spot.
+  window.addEventListener('touchend', (ev) => {
+    if (!drag || ev.touches.length) return;
+    const d = drag;
+    setTimeout(() => { if (drag === d) endPointer({ type: 'touchend' }, false, d.lx, d.ly); }, 60);
+  });
+  window.addEventListener('touchcancel', () => { if (drag) cancelDrag(); });
+  window.addEventListener('blur', () => { if (drag) cancelDrag(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && drag) cancelDrag(); });
 
   document.addEventListener('click', (ev) => {
     const t = ev.target.closest('[data-req],[data-sync],[data-daily],[data-dailybonus],[data-team],[data-gofish],[data-fish],[data-edit],[data-play],[data-addplayer],[data-switch],[data-claim],[data-deliver],[data-act],[data-slot],[data-buyslot],[data-up],[data-shop],.tabs button,#whoChip');
@@ -1486,6 +1527,7 @@
   // Always start on "Who's playing?" so nobody plays on someone else's save.
   P = loadProfiles();
   saveProfiles();
+  if (P.list.some((x) => x.name === 'Jason') && P.updated && now() - P.updated < 5000) pushProfiles().catch(() => {});
   showPicker();
   setInterval(() => { if (S) tick(); }, 1000);
   setInterval(() => { if (!document.hidden) pullAndRefresh(); }, 30000);
