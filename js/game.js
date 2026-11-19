@@ -127,6 +127,8 @@
     if (!P || !S) return;
     S.stats.lastPlayed = now();
     S.updatedAt = now();
+    const me = currentPlayer();
+    if (me) S.profile = { name: me.name, avatar: me.avatar, color: me.color };
     try { localStorage.setItem(saveKey(P.current), JSON.stringify(S)); } catch (_) { /* storage unavailable */ }
     schedulePush();
   }
@@ -170,7 +172,7 @@
     const me = p.list.find((x) => x.name === 'Me');
     if (!me || p.list.some((x) => x.name === 'Jason')) return false;
     me.name = 'Jason';
-    p.updated = now();
+    me.u = now();
     return true;
   }
 
@@ -302,6 +304,7 @@
         showModal('⚠️', `Delete ${esc(p.name)}?`, 'Their whole game will be erased.', [
           { label: 'Delete', fn: () => {
             P.list = P.list.filter((x) => x.id !== p.id);
+            P.deleted = { ...(P.deleted || {}), [p.id]: now() };
             try { localStorage.removeItem(saveKey(p.id)); } catch (_) { /* ignore */ }
             if (P.current === p.id) { P.current = P.list[0].id; S = null; }
             profilesChanged();
@@ -313,6 +316,7 @@
       }
       if (act === 'save') {
         if (!p.name) { $('pname').focus(); toast('Enter a name'); return; }
+        p.u = now();
         if (isNew) P.list.push(p);
         else Object.assign(P.list.find((x) => x.id === p.id), p);
         profilesChanged();
@@ -368,14 +372,47 @@
     : sync.status === 'error' ? 'Offline — will retry'
     : sync.at ? `Synced ${ago(sync.at)}` : 'Not synced yet');
 
+  // Player cards carry their own edit time `u`; deleted players are remembered in
+  // P.deleted (id -> time) so phones merge their lists instead of overwriting them.
   function profilesChanged() {
     P.updated = now();
     saveProfiles();
     pushProfiles().catch(() => setSync('error'));
   }
+  function mergeProfiles(sources) {
+    const deleted = {};
+    for (const src of sources) for (const [id, t] of Object.entries(src.deleted || {})) deleted[id] = Math.max(deleted[id] || 0, t);
+    const byId = new Map();
+    const order = [];
+    for (const src of sources) {
+      for (const p of src.list || []) {
+        const cur = byId.get(p.id);
+        if (!cur) { byId.set(p.id, p); order.push(p.id); }
+        else if ((p.u || 0) > (cur.u || 0)) byId.set(p.id, p);
+      }
+    }
+    const list = order.map((id) => byId.get(id)).filter((p) => !(deleted[p.id] && deleted[p.id] >= (p.u || 0)));
+    return { list, deleted };
+  }
+  const remoteProfiles = (fam) => ({
+    list: fam ? JSON.parse(field(fam, 'profiles') || '[]') : [],
+    deleted: fam ? JSON.parse(field(fam, 'deleted') || '{}') : {},
+  });
+  const sameProfiles = (a, b) => JSON.stringify([a.list, a.deleted || {}]) === JSON.stringify([b.list, b.deleted || {}]);
+  function adoptProfiles(m) {
+    P.list = m.list;
+    P.deleted = m.deleted;
+    if (!P.list.some((p) => p.id === P.current)) P.current = P.list[0] && P.list[0].id;
+    saveProfiles();
+    if (S && currentPlayer()) applyTheme();
+  }
+  // Read the family's list, merge ours in, and write the result back.
   async function pushProfiles() {
     if (!cloudOn() || !family) return;
-    await fsPut('', { profiles: JSON.stringify(P.list), updated: P.updated || now() });
+    const fam = await fsGet('');
+    const merged = mergeProfiles([remoteProfiles(fam), { list: P.list, deleted: P.deleted }]);
+    adoptProfiles(merged);
+    await fsPut('', { profiles: JSON.stringify(merged.list), deleted: JSON.stringify(merged.deleted), updated: now() });
   }
 
   function schedulePush() {
@@ -401,15 +438,23 @@
       const [fam, list] = await Promise.all([fsGet(''), fsGet('/saves?pageSize=100')]);
       let changed = false;
       if (fam) {
-        const updated = +field(fam, 'updated') || 0;
-        if (updated > (P.updated || 0)) {
-          P.list = JSON.parse(field(fam, 'profiles'));
-          P.updated = updated;
-          if (P.list.some((x) => x.name === 'Me')) { P.renamedMe = false; if (renameMe(P)) pushProfiles().catch(() => {}); }
-          if (!P.list.some((p) => p.id === P.current)) P.current = P.list[0].id;
-          saveProfiles();
-          if (S) applyTheme();
-          changed = true;
+        const remote = remoteProfiles(fam);
+        const merged = mergeProfiles([remote, { list: P.list, deleted: P.deleted }]);
+        // A saved game whose player card went missing gets its card back.
+        for (const doc of (list && list.documents) || []) {
+          const id = doc.name.split('/').pop();
+          if (merged.list.some((p) => p.id === id) || merged.deleted[id]) continue;
+          let card = null;
+          try { card = JSON.parse(field(doc, 'data')).profile; } catch (_) { /* ignore */ }
+          merged.list.push({ id, name: (card && card.name) || 'Recovered player', avatar: (card && card.avatar) || '❓', color: (card && card.color) || '#8a6a4e', u: 1 });
+        }
+        if (merged.list.some((x) => x.name === 'Me') && !merged.list.some((x) => x.name === 'Jason')) {
+          const me = merged.list.find((x) => x.name === 'Me');
+          merged.list = merged.list.map((x) => (x === me ? { ...x, name: 'Jason', u: now() } : x));
+        }
+        if (!sameProfiles(merged, { list: P.list, deleted: P.deleted })) { adoptProfiles(merged); changed = true; }
+        if (!sameProfiles(merged, remote)) {
+          fsPut('', { profiles: JSON.stringify(merged.list), deleted: JSON.stringify(merged.deleted), updated: now() }).catch(() => {});
         }
       }
       for (const doc of (list && list.documents) || []) {
@@ -476,6 +521,7 @@
       if (!fam) throw new Error('notfound');
       const list = await fsGet('/saves?pageSize=100');
       const profiles = JSON.parse(field(fam, 'profiles'));
+      const remoteDeleted = JSON.parse(field(fam, 'deleted') || '{}');
       const saves = {};
       for (const doc of (list && list.documents) || []) saves[doc.name.split('/').pop()] = JSON.parse(field(doc, 'data'));
       const progress = (s) => (s ? s.level * 1000 + ((s.stats && s.stats.orders) || 0) * 10 + ((s.stats && s.stats.merges) || 0) : -1);
@@ -483,7 +529,7 @@
       for (const lp of P.list) {
         const ls = rawSave(lp.id);
         let rp = profiles.find((r) => r.name.trim().toLowerCase() === lp.name.trim().toLowerCase());
-        if (!rp) { if (!ls) continue; rp = { ...lp }; profiles.push(rp); }
+        if (!rp) { if (!ls) continue; rp = { ...lp, u: now() }; profiles.push(rp); }
         if (ls && progress(ls) > progress(saves[rp.id])) {
           ls.updatedAt = now();
           saves[rp.id] = ls;
@@ -494,6 +540,7 @@
       P.list.forEach((lp) => { try { localStorage.removeItem(saveKey(lp.id)); } catch (_) { /* ignore */ } });
       Object.entries(saves).forEach(([id, s]) => { try { localStorage.setItem(saveKey(id), JSON.stringify(s)); } catch (_) { /* ignore */ } });
       P.list = profiles;
+      P.deleted = remoteDeleted;
       P.updated = now();
       P.seeded = DEFAULT_PLAYERS.map((d) => d.name);
       P.current = (P.list.find((p) => p.name === curName) || P.list[0]).id;
@@ -1553,7 +1600,6 @@
   // Always start on "Who's playing?" so nobody plays on someone else's save.
   P = loadProfiles();
   saveProfiles();
-  if (P.list.some((x) => x.name === 'Jason') && P.updated && now() - P.updated < 5000) pushProfiles().catch(() => {});
   showPicker();
   setInterval(() => { if (S) tick(); }, 1000);
   setInterval(() => { if (!document.hidden) pullAndRefresh(); }, 30000);
