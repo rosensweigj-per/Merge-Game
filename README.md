@@ -8,7 +8,7 @@ No build step and no dependencies: open `index.html` in a browser, or serve the 
 
 1. **Produce & merge**: tap a producer (🪣 🧺 🪴 🧸) to spawn a level-1 item (sometimes level 2). Drag two identical items together to make the next level.
 2. **Fill orders**: Cooper the beagle 🐶, Izzy the calico cat and Lexi the grey cat each hold one order slot at the top. They ask for specific items (some want two). Tap **Deliver** when you have them for coins 🪙 and XP ⭐. Gold-outlined *tool orders* also pay out 🔨 🔩 🧱.
-3. **Rebuild the town**: spend coins + tools in the **Town** tab to repair and upgrade buildings. Finishing an area clears the fog over the next one and rewards gems plus a new producer.
+3. **Rebuild the town**: spend coins + tools in the **Town** tab to repair and upgrade buildings. Seven areas: Harbor Dock, Market Street, Lighthouse Hill, Sandy Cove, Pet Park, Boardwalk Fair and Starlight Pier. Finishing an area clears the fog over the next one and rewards gems plus a new producer.
 
 ## Players
 
@@ -79,7 +79,7 @@ Any phone can play any player. Before a game opens, its latest copy is downloade
 | System | How it works |
 | --- | --- |
 | Board | 7 × 9 grid. Drag to move/swap/merge; tap to inspect, sell, or store. |
-| Item chains | Seashells, Picnic, Garden (level 3), Beach Toys (level 6), 6 levels each. |
+| Item chains | Seashells, Picnic, Garden (level 3), Beach Toys (level 6), Sweet Treats (level 9), Pet Supplies (level 12), Starlight (level 15): 6 levels each, 42 items in all. |
 | Producers | Unlimited: tap as often as you like. Merge two of the same level to upgrade (higher chance of a level-2 item). |
 | Energy | None: producing is free and unlimited. The only limit is free space on the board. |
 | Gems 💎 | Buy storage slots and the daily deal. Earned from level-ups and area rewards. |

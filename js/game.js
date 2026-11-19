@@ -94,7 +94,7 @@
       storage: [], storageSlots: START.storage, storageBought: 0,
       coins: START.coins, gems: START.gems, xp: 0, level: 1,
       tools: { hammer: 0, screw: 0, brick: 0 },
-      orders: [], town: {}, areasDone: [], retired: [], discovered: { shell: 1, food: 2 },
+      orders: [], town: {}, areasDone: [], retired: [], discovered: { shell: 1, food: 2 }, granted: ['shell', 'food'],
       deal: { day: '', bought: false },
     };
     ensureState(S);
@@ -114,6 +114,9 @@
     s.board = s.board.map((e) => (e && e.b ? null : e));
     if (s.bait === undefined) s.bait = BAIT_DAILY;
     s.fishLog = s.fishLog || {};
+    // Chains whose starter producer this player has received. Older saves got the
+    // original four chains as they levelled up; newer chains are handed out on load.
+    if (!s.granted) s.granted = Object.keys(CHAINS).filter((c) => ['shell', 'food', 'flower', 'toy'].includes(c) && s.level >= CHAINS[c].unlock);
     rollWeek(s);
     return s;
   }
@@ -216,6 +219,7 @@
     const fresh = !S;
     if (fresh) newGame();
     rollDaily();
+    const gifts = fresh ? [] : grantProducers();
     save();
     applyTheme();
     $('who').classList.remove('show');
@@ -225,6 +229,8 @@
       showModal(p.avatar, `Welcome, ${esc(p.name)}!`,
         'Storms wrecked the seaside town. Tap producers to make items, merge them, fill orders and rebuild!',
         [{ label: "Let's go" }]);
+    } else if (gifts.length) {
+      showModal('🎁', 'New items to discover!', `${gifts.join('<br>')}<br><br>Look for them on your board, and check the Town tab for new places to build past Lighthouse Hill.`);
     } else toast(`Playing as ${p.avatar} ${p.name}`);
   }
 
@@ -623,28 +629,44 @@
   }
 
   // ---------------------------------------------------------------- progression
+  // Several level-ups at once are summarised in a single pop-up so no news is lost.
   function addXp(n) {
     S.xp += n;
+    const from = S.level;
+    const notes = [];
     while (S.xp >= xpForLevel(S.level)) {
       S.xp -= xpForLevel(S.level);
       S.level++;
-      levelUp();
+      notes.push(...levelUp());
     }
+    if (S.level === from) return;
+    S.orders = S.orders.map((o, i) => o.reqs.every((r) => activeChains().includes(r.c)) ? o : makeOrder(i, false));
+    const gems = (S.level - from) * 5;
+    showModal('🎉', S.level - from > 1 ? `Level ${from + 1} → ${S.level}!` : `Level ${S.level}!`, [`+${gems} 💎`, ...notes].join('<br>'));
   }
 
+  // Hand out the starter producer for every chain the player's level has unlocked
+  // but who hasn't received one yet (new chains added after they passed that level).
+  function grantProducers() {
+    const notes = [];
+    for (const [c, ch] of Object.entries(CHAINS)) {
+      if (S.level < ch.unlock || S.retired.includes(c) || S.granted.includes(c)) continue;
+      const p = Object.keys(PRODUCERS).find((k) => PRODUCERS[k].makes === c);
+      give(newProducer(p));
+      S.granted.push(c);
+      notes.push(`New producer: ${PRODUCERS[p].icon} ${PRODUCERS[p].name} (makes ${ch.name})`);
+    }
+    return notes;
+  }
+
+  // Applies one level's rewards and returns the news to show.
   function levelUp() {
     S.gems += 5;
-    const notes = ['+5 💎'];
+    const notes = grantProducers();
     for (const [c, ch] of Object.entries(CHAINS)) {
-      if (ch.unlock === S.level) {
-        const p = Object.keys(PRODUCERS).find((k) => PRODUCERS[k].makes === c);
-        give(newProducer(p));
-        notes.push(`New producer: ${PRODUCERS[p].icon} ${PRODUCERS[p].name}`);
-      }
       if (ch.retireAt === S.level) notes.push(retireChain(c));
     }
-    S.orders = S.orders.map((o, i) => o.reqs.every((r) => activeChains().includes(r.c)) ? o : makeOrder(i, false));
-    showModal('🎉', `Level ${S.level}!`, notes.join('<br>'));
+    return notes;
   }
 
   // Older chains are retired off the board into the permanent collection.
@@ -775,11 +797,15 @@
       S.areasDone.push(area.id);
       S.gems += area.reward.gems;
       const p = area.reward.producer;
-      give(newProducer(p));
+      if (p) give(newProducer(p));
+      for (const [t, n] of Object.entries(area.reward.tools || {})) S.tools[t] += n;
+      const got = [`+${area.reward.gems}💎`];
+      if (p) got.push(`a ${PRODUCERS[p].icon} ${PRODUCERS[p].name}`);
+      if (area.reward.tools) got.push(toolStr(area.reward.tools));
       const next = AREAS[areaIdx + 1];
-      showModal('🏝️', `${area.name} restored!`,
-        `+${area.reward.gems}💎 and a ${PRODUCERS[p].icon} ${PRODUCERS[p].name}.` +
-        (next ? `<br>The fog lifts over <b>${next.name}</b>.` : '<br>You rebuilt the whole town!'));
+      showModal(next ? '🏝️' : '🎆', `${area.name} restored!`,
+        (area.done ? `${area.done}<br><br>` : '') + got.join(' · ') +
+        (next ? `<br>The fog lifts over <b>${next.name}</b>.` : '<br><b>You rebuilt the whole town!</b>'));
     }
     commit();
   }
@@ -1227,7 +1253,7 @@
       }).join('');
       const done = areaDone(a);
       return `<div class="area"><h3>${a.name}${done ? '<span class="done-tag">✓ Restored</span>' : ''}</h3>
-        <p class="sub">${a.blurb} Reward: ${a.reward.gems}💎 + ${PRODUCERS[a.reward.producer].icon}</p>${blds}</div>`;
+        <p class="sub">${a.blurb} Reward: ${a.reward.gems}💎${a.reward.producer ? ` + ${PRODUCERS[a.reward.producer].icon}` : ''}${a.reward.tools ? ` + ${toolStr(a.reward.tools)}` : ''}</p>${blds}</div>`;
     }).join('');
   }
 

@@ -26,6 +26,18 @@ const CHAINS = {
     name: 'Beach Toys', unlock: 6,
     items: [['🎈', 'Balloon'], ['🪀', 'Yo-yo'], ['🪁', 'Kite'], ['🏐', 'Beach Ball'], ['⛱️', 'Parasol'], ['⛵', 'Sailboat']],
   },
+  treats: {
+    name: 'Sweet Treats', unlock: 9,
+    items: [['🍬', 'Candy'], ['🍪', 'Cookie'], ['🧁', 'Cupcake'], ['🍦', 'Ice Cream'], ['🍨', 'Sundae'], ['🍧', 'Shave Ice Tower']],
+  },
+  pets: {
+    name: 'Pet Supplies', unlock: 12,
+    items: [['🦴', 'Chew Bone'], ['🧶', 'Yarn Ball'], ['🎾', 'Tennis Ball'], ['🎀', 'Fancy Bow'], ['🛁', 'Bubble Bath'], ['🏆', 'Best in Show']],
+  },
+  night: {
+    name: 'Starlight', unlock: 15,
+    items: [['🕯️', 'Candle'], ['🏮', 'Lantern'], ['🎐', 'Wind Chime'], ['🎇', 'Sparkler'], ['🎆', 'Fireworks'], ['🌌', 'Starry Sky']],
+  },
 };
 
 // Producers spawn level-1 (sometimes level-2) items of their chain.
@@ -34,6 +46,9 @@ const PRODUCERS = {
   basket: { name: 'Picnic Basket', icon: '🧺', makes: 'food',   price: 150 },
   pot:    { name: 'Flower Pot',    icon: '🪴', makes: 'flower', price: 250 },
   chest:  { name: 'Toy Chest',     icon: '🧸', makes: 'toy',    price: 400 },
+  cart:   { name: 'Treat Cart',    icon: '🛒', makes: 'treats', price: 600 },
+  paws:   { name: 'Paw Pouch',     icon: '🐾', makes: 'pets',   price: 800 },
+  jar:    { name: 'Star Jar',      icon: '🫙', makes: 'night',  price: 1000 },
 };
 // Index = producer level - 1. Producers are unlimited; higher levels roll a
 // level-2 item more often.
@@ -171,6 +186,92 @@ const AREAS = [
       ] },
     ],
   },
+  {
+    id: 'cove', name: 'Sandy Cove', blurb: 'A sheltered beach for sunbathing and surfing.',
+    reward: { gems: 30, producer: 'cart' },
+    buildings: [
+      { id: 'beachshack', name: 'Beach Shack', icon: '🏖️', stages: [
+        { coins: 700, tools: { hammer: 3, screw: 1 } },
+        { coins: 1100, tools: { hammer: 3, screw: 2, brick: 1 } },
+        { coins: 1600, tools: { hammer: 4, screw: 3, brick: 3 } },
+      ] },
+      { id: 'lifeguard', name: 'Lifeguard Tower', icon: '🛟', stages: [
+        { coins: 750, tools: { screw: 3, brick: 1 } },
+        { coins: 1200, tools: { hammer: 3, brick: 2 } },
+        { coins: 1700, tools: { hammer: 4, screw: 4, brick: 3 } },
+      ] },
+      { id: 'surf', name: 'Surf Rental', icon: '🏄', stages: [
+        { coins: 800, tools: { hammer: 2, screw: 2 } },
+        { coins: 1300, tools: { screw: 3, brick: 2 } },
+        { coins: 1800, tools: { hammer: 4, screw: 4, brick: 4 } },
+      ] },
+    ],
+  },
+  {
+    id: 'park', name: 'Pet Park', blurb: 'Cooper, Izzy and Lexi have been hoping for this one.',
+    reward: { gems: 40, producer: 'paws' },
+    done: 'Cooper, Izzy and Lexi are racing around their new park! 🐶🐱🐱',
+    buildings: [
+      { id: 'dogrun', name: 'Dog Run', icon: '🐕', stages: [
+        { coins: 900, tools: { hammer: 3, screw: 2 } },
+        { coins: 1400, tools: { hammer: 4, brick: 2 } },
+        { coins: 2000, tools: { hammer: 5, screw: 3, brick: 3 } },
+      ] },
+      { id: 'catcafe', name: 'Cat Café', icon: '🐈', stages: [
+        { coins: 950, tools: { screw: 3, brick: 1 } },
+        { coins: 1500, tools: { hammer: 3, screw: 3, brick: 1 } },
+        { coins: 2100, tools: { hammer: 4, screw: 4, brick: 4 } },
+      ] },
+      { id: 'groomer', name: 'Grooming Parlor', icon: '🧼', stages: [
+        { coins: 1000, tools: { hammer: 2, screw: 2, brick: 1 } },
+        { coins: 1600, tools: { screw: 4, brick: 2 } },
+        { coins: 2200, tools: { hammer: 5, screw: 4, brick: 4 } },
+      ] },
+    ],
+  },
+  {
+    id: 'fair', name: 'Boardwalk Fair', blurb: 'Rides, games and the smell of popcorn.',
+    reward: { gems: 50, producer: 'jar' },
+    buildings: [
+      { id: 'carousel', name: 'Carousel', icon: '🎠', stages: [
+        { coins: 1200, tools: { hammer: 4, screw: 2 } },
+        { coins: 1800, tools: { hammer: 4, screw: 3, brick: 2 } },
+        { coins: 2600, tools: { hammer: 5, screw: 4, brick: 4 } },
+      ] },
+      { id: 'ferris', name: 'Ferris Wheel', icon: '🎡', stages: [
+        { coins: 1300, tools: { screw: 4, brick: 1 } },
+        { coins: 1900, tools: { hammer: 4, brick: 3 } },
+        { coins: 2800, tools: { hammer: 5, screw: 5, brick: 4 } },
+      ] },
+      { id: 'booths', name: 'Game Booths', icon: '🎯', stages: [
+        { coins: 1400, tools: { hammer: 3, screw: 3 } },
+        { coins: 2000, tools: { hammer: 3, screw: 3, brick: 3 } },
+        { coins: 3000, tools: { hammer: 6, screw: 5, brick: 4 } },
+      ] },
+    ],
+  },
+  {
+    id: 'starlight', name: 'Starlight Pier', blurb: 'Where the whole town gathers after dark.',
+    reward: { gems: 100, tools: { hammer: 5, screw: 5, brick: 5 } },
+    done: 'Lanterns glow, fireworks fill the sky, and the whole town comes out to celebrate. You did it! 🎆',
+    buildings: [
+      { id: 'lanterns', name: 'Lantern Walk', icon: '🏮', stages: [
+        { coins: 1600, tools: { hammer: 4, screw: 3 } },
+        { coins: 2400, tools: { hammer: 4, screw: 3, brick: 3 } },
+        { coins: 3400, tools: { hammer: 6, screw: 5, brick: 5 } },
+      ] },
+      { id: 'observatory', name: 'Observatory', icon: '🔭', stages: [
+        { coins: 1700, tools: { screw: 4, brick: 2 } },
+        { coins: 2500, tools: { hammer: 5, brick: 3 } },
+        { coins: 3600, tools: { hammer: 6, screw: 6, brick: 5 } },
+      ] },
+      { id: 'fireworks', name: 'Fireworks Barge', icon: '🎆', stages: [
+        { coins: 1800, tools: { hammer: 3, screw: 3, brick: 2 } },
+        { coins: 2700, tools: { hammer: 4, screw: 4, brick: 3 } },
+        { coins: 4000, tools: { hammer: 7, screw: 6, brick: 6 } },
+      ] },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------- players
@@ -197,6 +298,8 @@ const GOALS = [
   { id: 'collect15', icon: '🔍', text: 'Discover 15 items',            target: 15,  get: (s) => sumValues(s.discovered), reward: { tools: { brick: 3 } } },
   { id: 'orders50',  icon: '📦', text: 'Deliver 50 orders',            target: 50,  get: (s) => s.stats.orders,       reward: { gems: 10 } },
   { id: 'market',    icon: '☕', text: 'Restore Market Street',        target: 2,   get: (s) => s.areasDone.length,   reward: { gems: 10 } },
+  { id: 'park',      icon: '🐾', text: 'Build the Pet Park',           target: 5,   get: (s) => s.areasDone.length,   reward: { gems: 25 } },
+  { id: 'level15',   icon: '⭐', text: 'Reach level 15',               target: 15,  get: (s) => s.level,              reward: { gems: 30 } },
   { id: 'merge500',  icon: '✨', text: 'Make 500 merges',              target: 500, get: (s) => s.stats.merges,       reward: { gems: 15 } },
   { id: 'level10',   icon: '⭐', text: 'Reach level 10',               target: 10,  get: (s) => s.level,              reward: { gems: 20 } },
   { id: 'collectAll',icon: '🏆', text: 'Complete the collection',      target: TOTAL_ITEMS, get: (s) => sumValues(s.discovered), reward: { gems: 30 } },
